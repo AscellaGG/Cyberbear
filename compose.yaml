@@ -1,0 +1,7 @@
+services:
+  cyberbear:
+    build: .
+    container_name: cyberbear
+    restart: unless-stopped
+    env_file:
+      - .env
