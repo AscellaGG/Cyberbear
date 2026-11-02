@@ -36,10 +36,10 @@ def make_briefing(articles, cves):
     ])
 
     for cve in cves:
-        lines.append(f"### {cve["id"]}")
+        lines.append(f"### {cve['id']}")
         lines.append(f"**Allvarlighetsgrad:** {cve['severity']}")
 
-        description = shorten_description(cve["description"])
+        description = shorten_description(cve['description'])
         lines.append(description)
 
         lines.append(f"[Läs mer](https://nvd.nist.gov/vuln/detail/{cve['id']})")
