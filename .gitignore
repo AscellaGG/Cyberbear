@@ -31,3 +31,7 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+
+
+
+sent_svt_articles.json
