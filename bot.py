@@ -45,8 +45,8 @@ def format_svt_article(article):
     link = article.get("link", "")
 
     return (
-        f"**{title}**\n"
-        f"[Läs artikeln]({link})"
+        f"**🔐  {title}**\n"
+        f"[SVT Nyheter · Läs artikeln]({link})"
     )
 
 BRIEFING_TIME = time(
