@@ -1,19 +1,25 @@
 # Cyberbear Discord Bot
 
-Cyberbear is a Python Discord bot for delivering a morning cybersecurity briefing. The current `/brief` command fetches recent headlines from The Hacker News RSS feed. CVE coverage and article prioritization are planned next steps.
+Cyberbear is a Python Discord bot that posts a cybersecurity morning briefing. The briefing combines recent headlines from The Hacker News with recently published CVEs from the National Vulnerability Database (NVD).
 
-## Current features
+## Features
 
-- `/brief` fetches up to three recent articles from The Hacker News.
-- Article links are included in the response without link preview cards.
-- The response includes a placeholder for future vulnerability coverage.
+- `/brief` creates and sends the current briefing on demand.
+- The briefing includes up to three recent The Hacker News articles.
+- It includes up to three CVEs published during the previous 24 hours, with their ID, severity, short description, and NVD link.
+- CVEs without a CVSS rating are shown as `Not yet rated`.
+- A scheduled briefing runs daily at 08:00 in the `Europe/Stockholm` time zone.
+- The scheduled briefing is sent to the Discord channels configured in `BRIEFING_CHANNEL_IDS`.
+- Link previews are suppressed in briefing messages.
+
+The NVD request currently asks for up to 250 results from the 24-hour window and then selects up to three. If more than 250 CVEs are published in that period, the response may not include every CVE.
 
 ## Requirements
 
 - Python 3.10 or later
 - A Discord application and bot token
 
-Install the Python dependencies in an activated virtual environment:
+Install the dependencies in an activated virtual environment:
 
 ```bash
 python -m pip install -r requirements.txt
@@ -25,11 +31,14 @@ Create a `.env` file in the project root:
 
 ```dotenv
 DISCORD_TOKEN=your-discord-bot-token
+BRIEFING_CHANNEL_IDS=123456789012345678,234567890123456789
 ```
 
-Keep the token secret. The `.env` file is excluded from Git.
+Replace the example channel IDs with the IDs of the channels where the scheduled briefing should be posted. Separate multiple IDs with commas. The bot needs permission to view each channel and send messages there.
 
-Invite the bot to your Discord server with the `bot` and `applications.commands` OAuth2 scopes. The bot currently uses global application commands, so updates may take some time to appear in Discord.
+Keep the bot token secret. The `.env` file is excluded from Git.
+
+Invite the bot to each Discord server with the `bot` and `applications.commands` OAuth2 scopes. The bot uses global application commands, so updates may take time to appear.
 
 ## Run the bot
 
@@ -39,17 +48,12 @@ With the virtual environment activated, run:
 python bot.py
 ```
 
-Restart the process after changing the code.
-
-## Development roadmap
-
-- Filter articles to the previous day's publication date.
-- Rank news by practical importance rather than feed order.
-- Add a small number of relevant CVEs to the briefing.
-- Add an automated morning post after the on-demand `/brief` workflow is reliable.
+The bot must remain running and connected for the scheduled 08:00 briefing to be sent. Restart it after code changes.
 
 ## Project files
 
-- `bot.py` — Discord bot, slash commands, RSS fetching and briefing formatting.
+- `bot.py` — Discord client, `/brief` command, and daily schedule.
+- `sources.py` — The Hacker News RSS and NVD CVE data retrieval.
+- `briefing.py` — Briefing message formatting.
 - `requirements.txt` — Python dependencies.
-- `.env` — local configuration and bot token; do not commit this file.
+- `.env` — Local configuration and bot token; do not commit this file.
