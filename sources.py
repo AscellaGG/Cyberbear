@@ -111,6 +111,9 @@ def get_latest_cves(limit=3):
                     score = cvss_data.get("baseScore")
                     break
             
+            if score is None or severity == "Not yet rated":
+                continue
+
             cves.append({
                 "id": cve["id"],
                 "description": description,
@@ -119,5 +122,5 @@ def get_latest_cves(limit=3):
                 "score": score
             })
         
-        cves.sort(key=lambda item: item["published"], reverse=True)
+        cves.sort(key=lambda item: item["score"], reverse=True)
         return cves[:limit]

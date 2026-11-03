@@ -15,7 +15,7 @@ from sources import (
     get_svt_articles,
     filter_svt_articles
     )
-from briefing import make_briefing
+from briefing import make_briefing, shorten_description
 
 load_dotenv()
 
@@ -178,6 +178,35 @@ async def check_svt(interaction: discord.Interaction):
         ephemeral=True,
     )
 
+@tree.command(name="check_cve", description="Kolla nya CVEr.")
+async def check_cve(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    cves = await asyncio.to_thread(get_latest_cves)
+
+    lines = [
+        "## 🛡️  Nya sårbarheter:"
+    ]
+
+    for cve in cves:
+        lines.append(f"### {cve['id']}")
+        lines.append(f"**Allvarlighetsgrad:** {cve['severity']}, {cve['score']}")
+
+        description = shorten_description(cve['description'])
+        lines.append(description)
+
+        lines.append(f"[Läs mer](https://nvd.nist.gov/vuln/detail/{cve['id']})")
+        lines.append("")
+
+    await interaction.followup.send(
+        "\n".join(lines),
+        suppress_embeds=True,
+        ephemeral=True,
+    )
+
+# --------------------
+# FOR TESTING PURPOSES
+
 # @tree.command(name="preview_svt", description="Visa SVT-artiklar som filtret väljer.")
 # async def preview_svt(interaction: discord.Interaction):
 #     await interaction.response.defer(thinking=True, ephemeral=True)
@@ -204,5 +233,7 @@ async def check_svt(interaction: discord.Interaction):
 # @tree.command(name="test", description="test")
 # async def test(interaction: discord.Interaction):
 #     await interaction.response.send_message("Hello!")
+
+# --------------------
 
 client.run(token)
