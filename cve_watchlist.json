@@ -1,0 +1,182 @@
+{
+  "description": "Broad, educational CVE watchlist for cybersecurity engineering students. Treat these terms as product or technology hints when matching affected products, not as proof that a system is affected.",
+  "categories": {
+    "operating_systems_and_kernels": {
+      "label": "Operating systems and kernels",
+      "terms": [
+        "windows",
+        "windows_server",
+        "linux_kernel",
+        "ubuntu",
+        "debian",
+        "red_hat_enterprise_linux",
+        "fedora",
+        "suse_linux",
+        "macos",
+        "freebsd"
+      ]
+    },
+    "browsers_and_user_clients": {
+      "label": "Browsers and user-facing clients",
+      "terms": [
+        "chrome",
+        "chromium",
+        "firefox",
+        "safari",
+        "microsoft_edge",
+        "thunderbird",
+        "outlook"
+      ]
+    },
+    "networking_vpn_and_security_appliances": {
+      "label": "Networking, VPNs, firewalls, and security appliances",
+      "terms": [
+        "cisco",
+        "fortinet",
+        "fortios",
+        "palo_alto_networks",
+        "pan-os",
+        "ivanti",
+        "juniper",
+        "checkpoint",
+        "openvpn",
+        "wireguard",
+        "vpn",
+        "firewall",
+        "router",
+        "switch"
+      ]
+    },
+    "identity_and_authentication": {
+      "label": "Identity, authentication, and access control",
+      "terms": [
+        "active_directory",
+        "entra_id",
+        "keycloak",
+        "okta",
+        "auth0",
+        "kerberos",
+        "ldap",
+        "saml",
+        "oauth",
+        "openid_connect",
+        "identity_provider",
+        "multi-factor_authentication"
+      ]
+    },
+    "web_servers_frameworks_and_cms": {
+      "label": "Web servers, frameworks, and content management systems",
+      "terms": [
+        "apache_http_server",
+        "nginx",
+        "microsoft_iis",
+        "tomcat",
+        "wordpress",
+        "joomla",
+        "drupal",
+        "django",
+        "flask",
+        "expressjs",
+        "node.js",
+        "php"
+      ]
+    },
+    "databases_and_data_platforms": {
+      "label": "Databases and data platforms",
+      "terms": [
+        "postgresql",
+        "mysql",
+        "mariadb",
+        "microsoft_sql_server",
+        "mongodb",
+        "redis",
+        "elasticsearch",
+        "oracle_database"
+      ]
+    },
+    "cloud_virtualization_and_containers": {
+      "label": "Cloud platforms, virtualization, and containers",
+      "terms": [
+        "amazon_web_services",
+        "microsoft_azure",
+        "google_cloud_platform",
+        "docker",
+        "containerd",
+        "kubernetes",
+        "vmware",
+        "qemu",
+        "virtualbox",
+        "proxmox",
+        "hyper-v",
+        "openstack",
+        "terraform"
+      ]
+    },
+    "programming_languages_and_shared_components": {
+      "label": "Programming languages, package ecosystems, and shared components",
+      "terms": [
+        "python",
+        "cpython",
+        "pip",
+        "pypi",
+        "node.js",
+        "npm",
+        "java",
+        "openjdk",
+        "maven",
+        "golang",
+        "rust",
+        "openssl",
+        "curl",
+        "git",
+        "glibc",
+        "zlib"
+      ]
+    },
+    "security_and_observability_tools": {
+      "label": "Security, monitoring, and observability tools",
+      "terms": [
+        "wireshark",
+        "nmap",
+        "metasploit",
+        "burp_suite",
+        "snort",
+        "suricata",
+        "splunk",
+        "elastic_stack",
+        "nessus",
+        "crowdstrike_falcon",
+        "microsoft_defender"
+      ]
+    },
+    "industrial_control_and_iot": {
+      "label": "Industrial control systems, operational technology, and IoT",
+      "terms": [
+        "scada",
+        "industrial_control_system",
+        "plc",
+        "modbus",
+        "profinet",
+        "bacnet",
+        "dnp3",
+        "iec_61850",
+        "internet_of_things",
+        "iot_gateway",
+        "embedded_device"
+      ]
+    },
+    "cryptography_and_secure_protocols": {
+      "label": "Cryptography and secure communication protocols",
+      "terms": [
+        "openssl",
+        "libressl",
+        "boringssl",
+        "gnutls",
+        "openssh",
+        "tls",
+        "ssh",
+        "ipsec"
+      ]
+    }
+  }
+}

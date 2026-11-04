@@ -8,6 +8,6 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY bot.py briefing.py sources.py keywords.json ./
+COPY bot.py briefing.py sources.py keywords.json cve_selection.py cve_watchlist.json ./
 
 CMD ["python", "bot.py"]

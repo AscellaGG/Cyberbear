@@ -60,8 +60,7 @@ def filter_svt_articles(entries):
     return relevant_articles
 
 
-
-def get_latest_cves(limit=3):
+def get_latest_cves():
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(hours=24)
 
@@ -119,8 +118,40 @@ def get_latest_cves(limit=3):
                 "description": description,
                 "published": cve["published"],
                 "severity": severity,
-                "score": score
+                "score": score,
+                "affected_products": extract_affected_products(cve),
             })
         
         cves.sort(key=lambda item: item["score"], reverse=True)
-        return cves[:limit]
+        return cves
+
+def extract_affected_products(cve):
+    products = set()
+
+    for source in cve.get("affected", []):
+        for affected in source.get("affectedData", []):
+            vendor = affected.get("vendor", "").strip()
+            product = affected.get("product", "").strip()
+
+            if vendor or product:
+                products.add(f"{vendor}:{product}".casefold())
+
+            for module in affected.get("modules", []):
+                products.add(f"{vendor}:{product}:{module}".casefold())
+
+    for configuration in cve.get("configurations", []):
+        for node in configuration.get("nodes", []):
+            for match in node.get("cpeMatch", []):
+                if not match.get("vulnerable", False):
+                    continue
+
+                criteria = match.get("criteria", "")
+                parts = criteria.split(":")
+
+                # A CPE 2.3 string has vendor at index 3 and product at index 4
+                if len(parts) > 4 and parts[0] == "cpe" and parts[1] == "2.3":
+                    vendor = parts[3]
+                    product = parts[4]
+                    products.add(f"{vendor}:{product}".casefold())
+
+    return sorted(products)

@@ -6,8 +6,9 @@ Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerabili
 
 - `/brief` creates and sends the current morning briefing on demand.
 - The briefing includes up to three recent articles from The Hacker News.
-- It includes up to three CVEs published during the previous 24 hours, with their ID, severity, short description, and NVD link.
-- CVEs without a CVSS rating are shown as `Not yet rated`.
+- It checks up to 250 CVEs published during the previous 24 hours, skips CVEs without a CVSS score, matches affected products against `cve_watchlist.json`, and displays up to three matching CVEs ranked by numeric CVSS score.
+- CVE entries include affected-product hints extracted from NVD's `affected` and CPE configuration data.
+- `/check_cve` privately displays the same watchlist-matched CVEs as the morning briefing.
 - A scheduled briefing runs daily at 08:00 in the `Europe/Stockholm` time zone.
 - The scheduled briefing is sent to the Discord channels configured in `BRIEFING_CHANNEL_IDS`.
 - SVT News is checked at bot startup and then every 10 minutes for new articles matching the keyword rules in `keywords.json`.
@@ -16,7 +17,7 @@ Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerabili
 - Previously handled SVT article IDs are stored in `sent_svt_articles.json` to prevent duplicate posts. On the first run, the current articles in the feed are recorded without posting them, so old stories are not sent in a batch.
 - Link previews are suppressed in bot messages.
 
-The NVD request asks for up to 250 results from the 24-hour window and then selects up to three. If more than 250 CVEs are published in that period, the response may not include every CVE.
+The watchlist uses broad cybersecurity product areas and normalized whole-word or phrase matching against NVD's affected-product hints. CVEs without affected-product data, or whose product names do not match a watchlist term, are omitted. The current selection does not yet use known-exploited vulnerability data. If more than 250 CVEs are published in the 24-hour window, the response may not include every CVE.
 
 ## Requirements
 
@@ -104,10 +105,21 @@ The bot must remain running and connected for the scheduled briefing and SVT mon
 ## Project files
 
 - `bot.py` — Discord client, slash commands, scheduled briefing, and SVT monitoring.
-- `sources.py` — The Hacker News and SVT RSS feeds, keyword filtering, and NVD CVE retrieval.
+- `sources.py` — The Hacker News and SVT RSS feeds, keyword filtering, NVD CVE retrieval, and affected-product extraction.
+- `cve_selection.py` — Watchlist matching and CVE ranking.
 - `keywords.json` — Swedish and English keywords used by the SVT article filter.
+- `cve_watchlist.json` — Broad cybersecurity topics and product families used to filter CVEs.
 - `briefing.py` — Morning briefing message formatting.
 - `sent_svt_articles.json` — Runtime state containing handled SVT article IDs; generated automatically and excluded from Git.
 - `requirements.txt` — Python dependencies.
 - `Dockerfile` and `compose.yaml` — Container image and service configuration.
 - `.env` — Local configuration and bot token; do not commit this file.
+
+
+## To-Dos
+
+- Remember what articles have been posted from The Hacker News
+- Add known-exploited vulnerability data to CVE prioritization.
+- Add more SVT feeds because the current feed does not cover every relevant story.
+- Send patchnotes on updates
+- Implement nightly briefings

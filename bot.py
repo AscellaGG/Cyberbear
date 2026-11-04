@@ -16,6 +16,7 @@ from sources import (
     filter_svt_articles
     )
 from briefing import make_briefing, shorten_description
+from cve_selection import select_relevant_cves
 
 load_dotenv()
 
@@ -49,6 +50,10 @@ def format_svt_article(article):
         f"[SVT Nyheter · Läs artikeln]({link})"
     )
 
+async def get_relevant_cves():
+    candidates = await asyncio.to_thread(get_latest_cves)
+    return await asyncio.to_thread(select_relevant_cves, candidates, 3)
+
 BRIEFING_TIME = time(
     hour=8,
     minute=0,
@@ -57,8 +62,8 @@ BRIEFING_TIME = time(
 
 async def create_briefing_message():
     articles = await asyncio.to_thread(get_latest_articles)
-    cves = await asyncio.to_thread(get_latest_cves)
-    return make_briefing(articles, cves)
+    cves = await get_relevant_cves()
+    return make_briefing(articles, cves[:3])
 
 
 @tasks.loop(time=BRIEFING_TIME)
@@ -182,13 +187,13 @@ async def check_svt(interaction: discord.Interaction):
 async def check_cve(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True, ephemeral=True)
 
-    cves = await asyncio.to_thread(get_latest_cves)
+    cves = await get_relevant_cves()
 
     lines = [
         "## 🛡️  Nya sårbarheter:"
     ]
 
-    for cve in cves:
+    for cve in cves[:3]:
         lines.append(f"### {cve['id']}")
         lines.append(f"**Allvarlighetsgrad:** {cve['severity']}, {cve['score']}")
 
