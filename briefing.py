@@ -37,7 +37,7 @@ def make_briefing(articles, cves):
 
     for cve in cves:
         lines.append(f"### {cve['id']}")
-        lines.append(f"**Allvarlighetsgrad:** {cve['severity']}")
+        lines.append(f"**Allvarlighetsgrad:** {cve['severity']}, {cve['score']}")
 
         description = shorten_description(cve['description'])
         lines.append(description)
