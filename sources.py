@@ -4,10 +4,15 @@ import json
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from pathlib import Path
+from calendar import timegm
 
 RSS_URL = "https://thehackernews.com/feeds/posts/default?alt=rss"
 
-SVT_RSS_URL = "https://www.svt.se/nyheter/rss.xml"
+SVT_RSS_URLS = [
+    "https://www.svt.se/nyheter/inrikes/rss.xml",
+    "https://www.svt.se/nyheter/utrikes/rss.xml",
+]
+
 CONFIG_DIR = Path(__file__).resolve().parent / "config"
 KEYWORDS_FILE = CONFIG_DIR / "keywords.json"
 
@@ -29,15 +34,36 @@ def get_latest_articles():
         for article in feed.entries
     ]
 
-    with open("test.txt", "w", encoding="utf-8") as file:
-        json.dump(articles, file, indent=2, ensure_ascii=False)
+    # with open("test.txt", "w", encoding="utf-8") as file:
+    #     json.dump(articles, file, indent=2, ensure_ascii=False)
 
     return articles
 
 def get_svt_articles():
-    with urlopen(SVT_RSS_URL, timeout=10) as response:
-        feed = feedparser.parse(response.read())
-    return feed.entries
+    articles_by_id = {}
+
+    for rss_url in SVT_RSS_URLS:
+        with urlopen(rss_url, timeout=10) as response:
+            feed = feedparser.parse(response.read())
+        
+        for article in feed.entries:
+            article_id = article.get("id") or article.get("link")
+
+            if article_id:
+                articles_by_id[article_id] = article
+    
+    articles = list(articles_by_id.values())
+
+    articles.sort(
+        key=lambda article: (
+            timegm(article.get("published_parsed"))
+            if article.get("published_parsed")
+            else 0
+        ),
+        reverse=True,
+    )
+
+    return articles
 
 def filter_svt_articles(entries):
     with KEYWORDS_FILE.open(encoding="utf-8") as file:
