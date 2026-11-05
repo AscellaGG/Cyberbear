@@ -64,7 +64,7 @@ def make_briefing(articles, cves, period, successfull):
         lines.append("")
 
     if successfull:
-        lines.append(f"## <@{owner_id}> Något gick fel, du kanske glömde mata mig med tokens! Jag svälter! Kanske. 😩😭😵<:peepoHungry:1567965150223269968>")
+        lines.append(f"## <@{owner_id}> Något gick fel, du kanske glömde mata mig med tokens! Jag svälter! Kanske. <:peepoHungry:1567965150223269968>")
 
     return "\n".join(lines)
 
