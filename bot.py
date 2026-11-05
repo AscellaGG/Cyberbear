@@ -68,9 +68,9 @@ EVENING_TIME = time(
 )
 
 async def create_briefing_message(period):
-    articles = await asyncio.to_thread(get_ai_ranked_articles)
+    articles, ai_ranked = await asyncio.to_thread(get_ai_ranked_articles)
     cves = await get_relevant_cves()
-    return make_briefing(articles, cves[:3], period)
+    return make_briefing(articles, cves[:3], period, ai_ranked)
 
 async def send_scheduled_briefing(period):
     await client.wait_until_ready()

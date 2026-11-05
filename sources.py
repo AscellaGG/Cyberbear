@@ -78,7 +78,7 @@ def filter_svt_articles(entries):
 
 def get_latest_cves():
     end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(hours=24)
+    start_date = end_date - timedelta(hours=12)
 
     parameters = {
         "pubStartDate": start_date.isoformat(timespec="milliseconds").replace("+00:00", "Z"),

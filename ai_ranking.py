@@ -15,9 +15,10 @@ client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 RSS_URL = "https://thehackernews.com/feeds/posts/default?alt=rss"
 SYSTEM_PROMPT_FILE = Path(__file__).resolve().with_name("systemprompt.txt")
+
 AI_CACHE_SECONDS = 60 * 60
 _ai_cache_lock = threading.Lock()
-_cached_ranked_articles = None
+_cached_result = None
 _ai_cache_created_at = 0.0
 
 def call_ai(user_content):
@@ -49,21 +50,22 @@ def call_ai(user_content):
 
 
 def get_ai_ranked_articles():
-    global _cached_ranked_articles, _ai_cache_created_at
+    global _cached_result, _ai_cache_created_at
 
     with _ai_cache_lock:
         now = time.monotonic()
         if (
-            _cached_ranked_articles is not None
+            _cached_result is not None
             and now - _ai_cache_created_at < AI_CACHE_SECONDS
         ):
             print("Using cached AI-ranked articles.")
-            return _cached_ranked_articles
+            return _cached_result
 
-        ranked_articles = _fetch_and_rank_articles()
-        _cached_ranked_articles = ranked_articles
+        result = _fetch_and_rank_articles()
+        _cached_result = result
         _ai_cache_created_at = time.monotonic()
-        return ranked_articles
+
+        return result
 
 
 def _fetch_and_rank_articles():
@@ -74,7 +76,6 @@ def _fetch_and_rank_articles():
     articles = []
 
     for article in feed.entries:
-
         articles.append(
             {
                 "id": article.get("id") or article.get("link"),
@@ -87,26 +88,33 @@ def _fetch_and_rank_articles():
         
     filtered_articles = filter_articles(articles)
 
-    ai_response = call_ai(filtered_articles)
+    with open("ai_input.txt", "w", encoding="utf-8") as file:
+        json.dump(filtered_articles, file, indent=2, ensure_ascii=False)
 
-    ai_data = json.loads(ai_response)
 
-    with open("ai_response.txt", "w", encoding="utf-8") as file:
-        json.dump(ai_data, file, indent=2, ensure_ascii=False)
+    try:
+        ai_response = call_ai(filtered_articles)
 
-    ranked_articles = ai_data.get("ranked_articles")
-    if not isinstance(ranked_articles, list):
-        raise ValueError("The AI response is missing the ranked_articles list.")
+        ai_data = json.loads(ai_response)
 
-    return ranked_articles
+        with open("ai_response.txt", "w", encoding="utf-8") as file:
+            json.dump(ai_data, file, indent=2, ensure_ascii=False)
+
+        ranked_articles = ai_data.get("ranked_articles")
+        if not isinstance(ranked_articles, list):
+            raise ValueError("The AI response is missing the ranked_articles list.")
+
+        return ranked_articles, True
+    
+    except (APIError, json.JSONDecodeError, ValueError) as error:
+        return filter_articles, False
 
 def filter_articles(articles):
     filtered_articles = []
     
     end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(hours=24)
+    start_date = end_date - timedelta(hours=12)
     
-
     for article in articles:
         
         if not article["published"]:
