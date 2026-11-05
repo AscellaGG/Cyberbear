@@ -17,7 +17,22 @@ def get_latest_articles():
     # Bound the network wait so the interaction cannot remain pending forever.
     with urlopen(RSS_URL, timeout=10) as response:
         feed = feedparser.parse(response.read())
-    return feed.entries
+
+    articles = [
+        {
+            "id": article.get("id") or article.get("link"),
+            "title": article.get("title", ""),
+            "summary": article.get("summary", ""),
+            "link": article.get("link", ""),
+            "published": article.get("published", "")
+        }
+        for article in feed.entries
+    ]
+
+    with open("test.txt", "w", encoding="utf-8") as file:
+        json.dump(articles, file, indent=2, ensure_ascii=False)
+
+    return articles
 
 def get_svt_articles():
     with urlopen(SVT_RSS_URL, timeout=10) as response:

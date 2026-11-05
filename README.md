@@ -1,11 +1,12 @@
 # Cyberbear Discord Bot
 
-Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerability information. It creates a daily morning briefing from The Hacker News and recent CVEs, and monitors SVT News for new Swedish cybersecurity-related stories.
+Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerability information. It creates morning and evening briefings with AI-ranked articles from The Hacker News and recent CVEs, and monitors SVT News for new Swedish cybersecurity-related stories.
 
 ## Features
 
 - `/brief` creates and sends a briefing on demand using an evening introduction.
-- The briefing includes up to three recent articles from The Hacker News.
+- The briefing sends recent The Hacker News articles from the previous 24 hours to Anthropic Claude Haiku 5.5 for relevance ranking, then includes up to the top three.
+- Article relevance is judged for cybersecurity engineering students using the instructions in `systemprompt.txt`; the AI preserves article details and adds a rank, relevance score, and reason.
 - It checks up to 250 CVEs published during the previous 24 hours, skips CVEs without a CVSS score, matches affected products against `config/cve_watchlist.json`, and displays up to three matching CVEs ranked by numeric CVSS score.
 - CVE entries include affected-product hints extracted from NVD's `affected` and CPE configuration data.
 - `/check_cve` privately displays the same watchlist-matched CVEs as the morning briefing.
@@ -38,11 +39,12 @@ Create a `.env` file in the project root:
 ```dotenv
 DISCORD_TOKEN=your-discord-bot-token
 BRIEFING_CHANNEL_IDS=123456789012345678,234567890123456789
+ANTHROPIC_API_KEY=your-anthropic-api-key
 ```
 
 Replace the example channel IDs with the IDs of the channels where the briefing and matching SVT articles should be posted. Separate multiple IDs with commas. The bot needs permission to view each channel and send messages there.
 
-Keep the bot token secret. The `.env` file is excluded from Git.
+Keep both API keys secret. The `.env` file is excluded from Git. Anthropic API usage is billed separately from Claude chat subscriptions; make sure the Anthropic account has API credits or billing enabled.
 
 Invite the bot to each Discord server with the `bot` and `applications.commands` OAuth2 scopes. The bot uses global application commands, so updates may take time to appear.
 
@@ -61,7 +63,7 @@ This second rule helps catch incidents involving systems such as store refrigera
 
 ## Run with Docker Compose
 
-Install Docker Engine and the Docker Compose plugin on the machine that will host the bot. Copy `.env.example` to `.env` and fill in the production bot token and channel IDs. Keep `.env` private; it is ignored by Git and excluded from the Docker build context.
+Install Docker Engine and the Docker Compose plugin on the machine that will host the bot. Copy `.env.example` to `.env` and fill in the production bot token, channel IDs, and Anthropic API key. Keep `.env` private; it is ignored by Git and excluded from the Docker build context.
 
 Build the image and start the bot in the background:
 
@@ -112,6 +114,8 @@ The bot must remain running and connected for the scheduled briefing and SVT mon
 - `bot.py` — Discord client, slash commands, scheduled briefing, and SVT monitoring.
 - `sources.py` — The Hacker News and SVT RSS feeds, keyword filtering, NVD CVE retrieval, and affected-product extraction.
 - `cve_selection.py` — Watchlist matching and CVE ranking.
+- `ai_ranking.py` — Fetches recent Hacker News articles, asks Claude Haiku 5.5 to rank them, and returns the ranked article data.
+- `systemprompt.txt` — Instructions for ranking articles by relevance to cybersecurity engineering students.
 - `config/keywords.json` — Swedish and English keywords used by the SVT article filter.
 - `config/cve_watchlist.json` — Broad cybersecurity topics and product families used to filter CVEs.
 - `config/phrases.json` — Morning and evening briefing introduction lists.
@@ -124,7 +128,8 @@ The bot must remain running and connected for the scheduled briefing and SVT mon
 
 ## To-Dos
 
-- Remember what articles have been posted from The Hacker News
+- Remember what articles have been posted from The Hacker News, as well as cves so night and morning briefings don't have the same stuff
 - Add known-exploited vulnerability data to CVE prioritization.
 - Add more SVT feeds because the current feed does not cover every relevant story.
 - Send patchnotes on updates
+- Extra test commands, preferably only available to Testbear

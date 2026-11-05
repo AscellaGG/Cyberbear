@@ -36,8 +36,11 @@ def make_briefing(articles, cves, period):
     ]
 
     for article in articles[:3]:
-        lines.append(f"**{article.title}**")
-        lines.append(f"[Läs artikeln]({article.link})")
+        title = article.get("title", "Artikel utan rubrik")
+        link = article.get("link", "")
+        lines.append(f"**{title}**")
+        if link:
+            lines.append(f"[Läs artikeln]({link})")
         lines.append("")
 
     lines.extend([
