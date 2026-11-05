@@ -180,7 +180,7 @@ async def on_ready():
 async def brief(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
 
-    message = await create_briefing_message("evening")
+    message = await create_briefing_message("other")
 
     await interaction.followup.send(message, suppress_embeds=True)
 
