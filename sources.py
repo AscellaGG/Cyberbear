@@ -73,7 +73,7 @@ def get_latest_cves():
 
     url = f"{NVD_API_URL}?{urlencode(parameters)}"
 
-    with urlopen(url, timeout=15) as response:
+    with urlopen(url, timeout=30) as response:
         data = json.loads(response.read().decode("utf-8"))
 
         cves = []
