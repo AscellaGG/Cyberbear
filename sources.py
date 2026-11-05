@@ -8,7 +8,8 @@ from pathlib import Path
 RSS_URL = "https://thehackernews.com/feeds/posts/default?alt=rss"
 
 SVT_RSS_URL = "https://www.svt.se/nyheter/rss.xml"
-KEYWORDS_FILE = Path(__file__).with_name("keywords.json")
+CONFIG_DIR = Path(__file__).resolve().parent / "config"
+KEYWORDS_FILE = CONFIG_DIR / "keywords.json"
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 

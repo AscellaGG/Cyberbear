@@ -1,3 +1,9 @@
+import json
+import random
+from pathlib import Path
+
+PHRASES_FILE = Path(__file__).resolve().parent / "config" / "phrases.json"
+
 def shorten_description(text, max_length=300):
     text = text.strip()
 
@@ -18,9 +24,12 @@ def shorten_description(text, max_length=300):
     shortened = text[:max_length].rsplit(" ", 1)[0]
     return shortened + "…"
 
-def make_briefing(articles, cves):
+def make_briefing(articles, cves, period):
+
+    phrase = get_briefing_phrase(period)
+
     lines = [
-        "# Hallå allesammans, vi kör lite nyheter så här på morgonkvisten innan vi kör igång dagen!",
+        f"# {phrase}",
         "",
         "## 📰  Senaste nytt:",
         "",
@@ -46,3 +55,14 @@ def make_briefing(articles, cves):
         lines.append("")
 
     return "\n".join(lines)
+
+def get_briefing_phrase(period):
+    with PHRASES_FILE.open(encoding="utf-8") as file:
+        all_phrases = json.load(file)
+
+    phrases = all_phrases[period]
+
+    phrase = random.choice(phrases)
+
+    return phrase
+    # Handle errors???

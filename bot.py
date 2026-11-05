@@ -54,21 +54,27 @@ async def get_relevant_cves():
     candidates = await asyncio.to_thread(get_latest_cves)
     return await asyncio.to_thread(select_relevant_cves, candidates, 3)
 
-BRIEFING_TIME = time(
+MORNING_TIME = time(
     hour=8,
     minute=0,
     tzinfo=ZoneInfo("Europe/Stockholm"),
 )
 
-async def create_briefing_message():
+EVENING_TIME = time(
+    hour=20,
+    minute=0,
+    tzinfo=ZoneInfo("Europe/Stockholm"),
+)
+
+async def create_briefing_message(period):
     articles = await asyncio.to_thread(get_latest_articles)
     cves = await get_relevant_cves()
-    return make_briefing(articles, cves[:3])
+    return make_briefing(articles, cves[:3], period)
 
+async def send_scheduled_briefing(period):
+    await client.wait_until_ready()
 
-@tasks.loop(time=BRIEFING_TIME)
-async def scheduled_briefing():
-    message = await create_briefing_message()
+    message = await create_briefing_message(period)
 
     channel_ids = [
         int(value.strip())
@@ -84,10 +90,13 @@ async def scheduled_briefing():
         
         await channel.send(message, suppress_embeds=True)
 
-@scheduled_briefing.before_loop
-async def before_scheduled_briefing():
-    await client.wait_until_ready()
+@tasks.loop(time=MORNING_TIME)
+async def scheduled_morning_briefing():
+    await send_scheduled_briefing("morning")
 
+@tasks.loop(time=EVENING_TIME)
+async def scheduled_evening_briefing():
+    await send_scheduled_briefing("evening")
 
 async def check_svt_feed_once():
     entries = await asyncio.to_thread(get_svt_articles)
@@ -158,9 +167,12 @@ async def on_ready():
     print(f"Synkade {len(synced)} globala kommandon.")
     print(f"Inloggad som {client.user}.")
 
-    if not scheduled_briefing.is_running():
-        scheduled_briefing.start()
-    
+    if not scheduled_morning_briefing.is_running():
+        scheduled_morning_briefing.start()
+
+    if not scheduled_evening_briefing.is_running():
+        scheduled_evening_briefing.start()
+
     if not check_svt_feed.is_running():
         check_svt_feed.start()
 
@@ -168,7 +180,7 @@ async def on_ready():
 async def brief(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
 
-    message = await create_briefing_message()
+    message = await create_briefing_message("other")
 
     await interaction.followup.send(message, suppress_embeds=True)
 

@@ -2,7 +2,8 @@ import json
 import re
 from pathlib import Path
 
-WATCHLIST_FILE = Path(__file__).with_name("cve_watchlist.json")
+CONFIG_DIR = Path(__file__).resolve().parent / "config"
+WATCHLIST_FILE = CONFIG_DIR / "cve_watchlist.json"
 
 def normalize_text(value):
     text = str(value).casefold()
