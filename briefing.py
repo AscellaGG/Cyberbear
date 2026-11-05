@@ -5,14 +5,14 @@ from pathlib import Path
 PHRASES_FILE = Path(__file__).resolve().parent / "config" / "phrases.json"
 
 def shorten_description(text, max_length=300):
-    text = text.strip()
+    text = text.split("\n", 1)[0].strip()
 
     if len(text) <= max_length:
         return text
 
     # Om det finns en meningsgräns inom utrymmet, kapa där.
     sentence_end = max(
-        text.rfind(".", 0, max_length),
+        text.rfind(". ", 0, max_length),
         text.rfind("!", 0, max_length),
         text.rfind("?", 0, max_length),
     )
