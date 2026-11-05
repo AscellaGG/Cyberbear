@@ -4,6 +4,8 @@ import os
 from urllib.request import urlopen
 import feedparser
 import json
+import threading
+import time
 from datetime import datetime, timedelta, timezone 
 from urllib.parse import urlencode
 from pathlib import Path
@@ -13,6 +15,10 @@ client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 RSS_URL = "https://thehackernews.com/feeds/posts/default?alt=rss"
 SYSTEM_PROMPT_FILE = Path(__file__).resolve().with_name("systemprompt.txt")
+AI_CACHE_SECONDS = 60 * 60
+_ai_cache_lock = threading.Lock()
+_cached_ranked_articles = None
+_ai_cache_created_at = 0.0
 
 def call_ai(user_content):
     sysfile = ""
@@ -43,6 +49,24 @@ def call_ai(user_content):
 
 
 def get_ai_ranked_articles():
+    global _cached_ranked_articles, _ai_cache_created_at
+
+    with _ai_cache_lock:
+        now = time.monotonic()
+        if (
+            _cached_ranked_articles is not None
+            and now - _ai_cache_created_at < AI_CACHE_SECONDS
+        ):
+            print("Using cached AI-ranked articles.")
+            return _cached_ranked_articles
+
+        ranked_articles = _fetch_and_rank_articles()
+        _cached_ranked_articles = ranked_articles
+        _ai_cache_created_at = time.monotonic()
+        return ranked_articles
+
+
+def _fetch_and_rank_articles():
     # Bound the network wait so the interaction cannot remain pending forever.
     with urlopen(RSS_URL, timeout=10) as response:
         feed = feedparser.parse(response.read())
