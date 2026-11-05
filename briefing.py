@@ -63,7 +63,7 @@ def make_briefing(articles, cves, period, successfull):
         lines.append(f"[Läs mer](https://nvd.nist.gov/vuln/detail/{cve['id']})")
         lines.append("")
 
-    if successfull:
+    if not successfull:
         lines.append(f"## <@{owner_id}> Något gick fel, du kanske glömde mata mig med tokens! Jag svälter! Kanske. <:peepoHungry:1567965150223269968>")
 
     return "\n".join(lines)
