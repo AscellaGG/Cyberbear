@@ -4,14 +4,15 @@ Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerabili
 
 ## Features
 
-- `/brief` creates and sends the current morning briefing on demand.
+- `/brief` creates and sends a briefing on demand using an evening introduction.
 - The briefing includes up to three recent articles from The Hacker News.
-- It checks up to 250 CVEs published during the previous 24 hours, skips CVEs without a CVSS score, matches affected products against `cve_watchlist.json`, and displays up to three matching CVEs ranked by numeric CVSS score.
+- It checks up to 250 CVEs published during the previous 24 hours, skips CVEs without a CVSS score, matches affected products against `config/cve_watchlist.json`, and displays up to three matching CVEs ranked by numeric CVSS score.
 - CVE entries include affected-product hints extracted from NVD's `affected` and CPE configuration data.
 - `/check_cve` privately displays the same watchlist-matched CVEs as the morning briefing.
-- A scheduled briefing runs daily at 08:00 in the `Europe/Stockholm` time zone.
-- The scheduled briefing is sent to the Discord channels configured in `BRIEFING_CHANNEL_IDS`.
-- SVT News is checked at bot startup and then every 10 minutes for new articles matching the keyword rules in `keywords.json`.
+- A morning briefing runs daily at 08:00 and an evening briefing at 20:00 in the `Europe/Stockholm` time zone.
+- Both scheduled briefings are sent to the Discord channels configured in `BRIEFING_CHANNEL_IDS`.
+- Briefing introductions are chosen randomly from the `morning` or `evening` phrase list in `config/phrases.json`, depending on which scheduled briefing is running.
+- SVT News is checked at bot startup and then every 10 minutes for new articles matching the keyword rules in `config/keywords.json`.
 - Matching SVT articles are sent to the same channels configured in `BRIEFING_CHANNEL_IDS`.
 - `/check_svt` triggers an SVT check immediately. Any new matching articles are sent to the briefing channels.
 - Previously handled SVT article IDs are stored in `sent_svt_articles.json` to prevent duplicate posts. On the first run, the current articles in the feed are recorded without posting them, so old stories are not sent in a batch.
@@ -47,12 +48,16 @@ Invite the bot to each Discord server with the `bot` and `applications.commands`
 
 ## SVT keyword filtering
 
-`keywords.json` contains the words used to identify relevant SVT articles. The filter accepts an article when either:
+`config/keywords.json` contains the words used to identify relevant SVT articles. The filter accepts an article when either:
 
 1. Its title or summary contains a direct cybersecurity keyword, or
 2. It contains both an attack signal and a system or target keyword.
 
 This second rule helps catch incidents involving systems such as store refrigeration equipment even when the article does not use a specific cybersecurity term. The keyword filter is intentionally simple and may need adjustments as you see false positives or missed stories.
+
+## Briefing phrases
+
+`config/phrases.json` contains separate `morning` and `evening` lists. The scheduled briefings select a random introduction from the list for their period. Keep at least one phrase in each list so the bot can choose an introduction.
 
 ## Run with Docker Compose
 
@@ -107,8 +112,9 @@ The bot must remain running and connected for the scheduled briefing and SVT mon
 - `bot.py` — Discord client, slash commands, scheduled briefing, and SVT monitoring.
 - `sources.py` — The Hacker News and SVT RSS feeds, keyword filtering, NVD CVE retrieval, and affected-product extraction.
 - `cve_selection.py` — Watchlist matching and CVE ranking.
-- `keywords.json` — Swedish and English keywords used by the SVT article filter.
-- `cve_watchlist.json` — Broad cybersecurity topics and product families used to filter CVEs.
+- `config/keywords.json` — Swedish and English keywords used by the SVT article filter.
+- `config/cve_watchlist.json` — Broad cybersecurity topics and product families used to filter CVEs.
+- `config/phrases.json` — Morning and evening briefing introduction lists.
 - `briefing.py` — Morning briefing message formatting.
 - `sent_svt_articles.json` — Runtime state containing handled SVT article IDs; generated automatically and excluded from Git.
 - `requirements.txt` — Python dependencies.
@@ -122,4 +128,3 @@ The bot must remain running and connected for the scheduled briefing and SVT mon
 - Add known-exploited vulnerability data to CVE prioritization.
 - Add more SVT feeds because the current feed does not cover every relevant story.
 - Send patchnotes on updates
-- Implement nightly briefings
