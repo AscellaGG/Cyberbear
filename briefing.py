@@ -1,8 +1,14 @@
 import json
 import random
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 PHRASES_FILE = Path(__file__).resolve().parent / "config" / "phrases.json"
+
+owner_id = int(os.getenv("OWNER_USER_ID"))
 
 def shorten_description(text, max_length=300):
     text = text.split("\n", 1)[0].strip()
@@ -24,7 +30,7 @@ def shorten_description(text, max_length=300):
     shortened = text[:max_length].rsplit(" ", 1)[0]
     return shortened + "…"
 
-def make_briefing(articles, cves, period):
+def make_briefing(articles, cves, period, successfull):
 
     phrase = get_briefing_phrase(period)
 
@@ -36,8 +42,11 @@ def make_briefing(articles, cves, period):
     ]
 
     for article in articles[:3]:
-        lines.append(f"**{article.title}**")
-        lines.append(f"[Läs artikeln]({article.link})")
+        title = article.get("title", "Artikel utan rubrik")
+        link = article.get("link", "")
+        lines.append(f"**{title}**")
+        if link:
+            lines.append(f"[Läs artikeln]({link})")
         lines.append("")
 
     lines.extend([
@@ -53,6 +62,9 @@ def make_briefing(articles, cves, period):
 
         lines.append(f"[Läs mer](https://nvd.nist.gov/vuln/detail/{cve['id']})")
         lines.append("")
+
+    if successfull:
+        lines.append(f"## <@{owner_id}> Något gick fel, du kanske glömde mata mig med tokens! Jag svälter! Kanske. 😩😭😵<:peepoHungry:1567965150223269968>")
 
     return "\n".join(lines)
 
