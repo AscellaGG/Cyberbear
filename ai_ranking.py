@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from anthropic import Anthropic
+from anthropic import Anthropic, APIError
 import os
 from urllib.request import urlopen
 import feedparser
@@ -107,7 +107,7 @@ def _fetch_and_rank_articles():
         return ranked_articles, True
     
     except (APIError, json.JSONDecodeError, ValueError) as error:
-        return filter_articles, False
+        return filtered_articles, False
 
 def filter_articles(articles):
     filtered_articles = []
