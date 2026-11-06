@@ -82,8 +82,6 @@ def get_ai_ranked_articles():
 
 def _fetch_and_rank_articles():
     try:
-        raise Exception("TEST EXCEPTION")
-
         # Bound the network wait so the interaction cannot remain pending forever.
         with urlopen(RSS_URL, timeout=10) as response:
             feed = feedparser.parse(response.read())
