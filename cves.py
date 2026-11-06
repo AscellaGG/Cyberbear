@@ -1,106 +1,28 @@
-from urllib.request import urlopen
+import json
+import re
 import feedparser
 import json
+import logging
+import asyncio
+
+from pathlib import Path
+from urllib.request import urlopen
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from pathlib import Path
 from calendar import timegm
 
-RSS_URL = "https://thehackernews.com/feeds/posts/default?alt=rss"
+logger = logging.getLogger(__name__)
+
+CONFIG_DIR = Path(__file__).resolve().parent / "config"
+WATCHLIST_FILE = CONFIG_DIR / "cve_watchlist.json"
 
 SVT_RSS_URLS = [
     "https://www.svt.se/nyheter/inrikes/rss.xml",
     "https://www.svt.se/nyheter/utrikes/rss.xml",
 ]
 
-CONFIG_DIR = Path(__file__).resolve().parent / "config"
-KEYWORDS_FILE = CONFIG_DIR / "keywords.json"
-
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-
-# def get_latest_articles():
-#     # Bound the network wait so the interaction cannot remain pending forever.
-#     with urlopen(RSS_URL, timeout=10) as response:
-#         feed = feedparser.parse(response.read())
-
-#     articles = [
-#         {
-#             "id": article.get("id") or article.get("link"),
-#             "title": article.get("title", ""),
-#             "summary": article.get("summary", ""),
-#             "link": article.get("link", ""),
-#             "published": article.get("published", "")
-#         }
-#         for article in feed.entries
-#     ]
-
-#     # with open("test.txt", "w", encoding="utf-8") as file:
-#     #     json.dump(articles, file, indent=2, ensure_ascii=False)
-
-#     return articles
-
-def get_svt_articles():
-    articles_by_id = {}
-
-    for rss_url in SVT_RSS_URLS:
-        with urlopen(rss_url, timeout=10) as response:
-            feed = feedparser.parse(response.read())
-        
-        for article in feed.entries:
-            article_id = article.get("id") or article.get("link")
-
-            if article_id:
-                articles_by_id[article_id] = article
-    
-    articles = list(articles_by_id.values())
-
-    articles.sort(
-        key=lambda article: (
-            timegm(article.get("published_parsed"))
-            if article.get("published_parsed")
-            else 0
-        ),
-        reverse=True,
-    )
-
-    return articles
-
-def filter_svt_articles(entries):
-    with KEYWORDS_FILE.open(encoding="utf-8") as file:
-        keywords = json.load(file)
-    
-    direct_keywords = keywords["direct_match"]
-    contextual_keywords = keywords["contextual_match"]
-    attack_signals = contextual_keywords["attack_signals"]
-    systems_or_targets = contextual_keywords["systems_or_targets"]
-
-    relevant_articles = []
-
-    for article in entries:
-        title = article.get("title", "")
-        summary = article.get("summary", "")
-        text = f"{title} {summary}".casefold()
-
-        has_direct_keyword = any(
-            word.casefold() in text
-            for word in direct_keywords
-        )
-
-        has_attack_signal = any(
-            word.casefold() in text
-            for word in attack_signals
-        )
-
-        has_system_or_target = any(
-            word.casefold() in text
-            for word in systems_or_targets
-        )
-
-        if has_direct_keyword or (has_attack_signal and has_system_or_target):
-            relevant_articles.append(article)
-
-    return relevant_articles
-
 
 def get_latest_cves():
     end_date = datetime.now(timezone.utc)
@@ -197,3 +119,49 @@ def extract_affected_products(cve):
                     products.add(f"{vendor}:{product}".casefold())
 
     return sorted(products)
+
+def normalize_text(value):
+    text = str(value).casefold()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return " ".join(text.split())
+
+def contains_phrase(text, phrase):
+    normalized_text = normalize_text(text)
+    normalized_phrase = normalize_text(phrase)
+
+    return f" {normalized_phrase} " in f" {normalized_text} "
+
+def find_matching_categories(cve, watchlist):
+    products = cve.get("affected_products", [])
+    matching_labels = []
+
+    for category in watchlist["categories"].values():
+        for term in category["terms"]:
+            if any(contains_phrase(product, term) for product in products):
+                matching_labels.append(category["label"])
+                break
+    
+    return matching_labels
+
+def select_relevant_cves(cves, limit=3):
+    with WATCHLIST_FILE.open(encoding="utf-8") as file:
+        watchlist = json.load(file)
+
+    matching_cves = []
+
+    for cve in cves:
+        categories = find_matching_categories(cve, watchlist)
+
+        if not categories:
+            continue
+        
+        selected_cve = cve.copy()
+        selected_cve["matched_categories"] = categories
+        matching_cves.append(selected_cve)
+
+    matching_cves.sort(key=lambda cve: cve["score"], reverse=True)
+    return matching_cves[:limit]
+
+async def get_relevant_cves():
+    candidates = await asyncio.to_thread(get_latest_cves)
+    return await asyncio.to_thread(select_relevant_cves, candidates, 3)

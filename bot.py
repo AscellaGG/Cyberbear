@@ -11,13 +11,9 @@ from discord.ext import tasks
 from pathlib import Path
 from config.logging_config import configure_logging
 
-from sources import (
-    get_latest_cves,
-    get_svt_articles,
-    filter_svt_articles
-    )
 from briefing import make_briefing, shorten_description
-from cve_selection import select_relevant_cves
+from cves import get_relevant_cves
+from svt_monitor import get_relevant_svt_articles, format_svt_article, load_seen_svt_ids, save_seen_svt_ids
 from ai_ranking import get_ai_ranked_articles
 
 load_dotenv()
@@ -32,32 +28,6 @@ if not token:
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
-
-SVT_STATE_FILE = Path(__file__).with_name("sent_svt_articles.json")
-
-def load_seen_svt_ids():
-    if not SVT_STATE_FILE.exists():
-        return None
-    
-    with SVT_STATE_FILE.open(encoding="utf-8") as file:
-        return set(json.load(file))
-
-def save_seen_svt_ids(seen_ids):
-    with SVT_STATE_FILE.open("w", encoding="utf-8") as file:
-        json.dump(sorted(seen_ids), file, indent=2)
-
-def format_svt_article(article):
-    title = article.get("title", "Artikel utan rubrik")
-    link = article.get("link", "")
-
-    return (
-        f"**🔐  {title}**\n"
-        f"[SVT Nyheter · Läs artikeln]({link})"
-    )
-
-async def get_relevant_cves():
-    candidates = await asyncio.to_thread(get_latest_cves)
-    return await asyncio.to_thread(select_relevant_cves, candidates, 3)
 
 MORNING_TIME = time(
     hour=8,
@@ -74,8 +44,6 @@ EVENING_TIME = time(
 async def create_briefing_message(period):
     articles, ai_ranked = await asyncio.to_thread(get_ai_ranked_articles)
     cves = await get_relevant_cves()
-
-
 
     return make_briefing(articles, cves[:3], period, ai_ranked)
 
@@ -110,33 +78,6 @@ async def scheduled_evening_briefing():
 
 async def check_svt_feed_once():
     try:
-        entries = await asyncio.to_thread(get_svt_articles)
-
-        current_ids = {
-            entry.get("id") or entry.get("link")
-            for entry in entries
-            if entry.get("id") or entry.get("link")
-        }
-
-        seen_ids = load_seen_svt_ids()
-
-        if seen_ids is None:
-            save_seen_svt_ids(current_ids)
-            return
-        
-        new_entries = []
-        
-        for entry in reversed(entries):
-            article_id = entry.get("id") or entry.get("link")
-
-            if article_id and article_id not in seen_ids:
-                new_entries.append(entry)
-
-        if not new_entries:
-            return
-
-        relevant_entries = filter_svt_articles(new_entries)
-
         channel_ids = [
             int(value.strip())
             for value in os.getenv("BRIEFING_CHANNEL_IDS", "").split(",")
@@ -146,10 +87,14 @@ async def check_svt_feed_once():
         if not channel_ids:
             return
 
-        for entry in new_entries:
-            article_id = entry.get("id") or entry.get("link")
+        articles = await get_relevant_svt_articles()
 
-            if entry in relevant_entries: 
+        seen_ids = load_seen_svt_ids()
+
+        if articles:
+            for entry in articles:
+                article_id = entry.get("id") or entry.get("link")
+
                 message = format_svt_article(entry)
 
                 for channel_id in channel_ids:
@@ -160,10 +105,15 @@ async def check_svt_feed_once():
                         
                     await channel.send(message, suppress_embeds=True)
                 
-            seen_ids.add(article_id)
-            save_seen_svt_ids(seen_ids)
-    except Exception as e :
-        logger.exception(f"Something went wrong idk figure it out\n{e}")
+                seen_ids.add(article_id)
+                save_seen_svt_ids(seen_ids)
+                
+                return True
+        elif articles == []:
+            return False
+
+    except Exception as error :
+        logger.exception(error)
 
 @tasks.loop(minutes=10)
 async def check_svt_feed():
@@ -172,7 +122,6 @@ async def check_svt_feed():
 @check_svt_feed.before_loop
 async def before_check_svt_feed():
     await client.wait_until_ready()
-
 
 @client.event
 async def on_ready():
@@ -201,12 +150,18 @@ async def brief(interaction: discord.Interaction):
 async def check_svt(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True, ephemeral=True)
 
-    await check_svt_feed_once()
+    new_articles = await check_svt_feed_once()
 
-    await interaction.followup.send(
-        "SVT-flödet har kontrollerats. Eventuella nya relevanta artiklar skickas till briefingkanalerna.",
-        ephemeral=True,
-    )
+    if new_articles:
+        await interaction.followup.send(
+            "SVT-flödet har kontrollerats. Eventuella nya relevanta artiklar skickas till briefingkanalerna.",
+            ephemeral=True,
+        )
+    else:
+        await interaction.followup.send(
+            "Det finns inga nya artiklar. <:sadge:1568301148895584363>",
+            ephemeral=True,
+        )
 
 @tree.command(name="check_cve", description="Kolla nya CVEr.")
 async def check_cve(interaction: discord.Interaction):
