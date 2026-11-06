@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from anthropic import Anthropic, APIError
+from anthropic import Anthropic
 import os
 from urllib.request import urlopen
 import feedparser
@@ -9,7 +9,9 @@ import time
 from datetime import datetime, timedelta, timezone 
 from urllib.parse import urlencode
 from pathlib import Path
+import logging
 
+logger = logging.getLogger(__name__)
 load_dotenv()  # Loads ANTHROPIC_API_KEY from your .env file
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -22,31 +24,39 @@ _cached_result = None
 _ai_cache_created_at = 0.0
 
 def call_ai(user_content):
-    sysfile = ""
+    try:
+        sysfile = ""
 
-    with SYSTEM_PROMPT_FILE.open(encoding="utf-8") as file:
-        sysfile = file.read()
+        with SYSTEM_PROMPT_FILE.open(encoding="utf-8") as file:
+            sysfile = file.read()
 
-    articles_json = json.dumps(user_content, ensure_ascii=False, indent=2)
+        articles_json = json.dumps(user_content, ensure_ascii=False, indent=2)
 
-    response = client.messages.create(
-        model="claude-haiku-5-5",
-        max_tokens=20000,
-        thinking={"type": "disabled"},
-        system=sysfile,
-        messages=[
-            {"role": "user", "content": articles_json}
-        ],
-    )
+        print("Calling AI...")
 
-    response_text = next(
-        (block.text for block in response.content if block.type == "text"),
-        None,
-    )
-    if response_text is None:
-        raise ValueError("The AI response did not contain a text block.")
+        response = client.messages.create(
+            model="claude-haiku-5-5",
+            max_tokens=20000,
+            thinking={"type": "disabled"},
+            system=sysfile,
+            messages=[
+                {"role": "user", "content": articles_json}
+            ],
+        )
 
-    return response_text
+        response_text = next(
+            (block.text for block in response.content if block.type == "text"),
+            None,
+        )
+        if response_text is None:
+            raise ValueError("The AI response did not contain a text block.")
+        else:
+            print("AI call successfull")
+
+        return response_text
+    except:
+        logger.exception("AI call failed")
+        raise
 
 
 def get_ai_ranked_articles():
@@ -62,68 +72,79 @@ def get_ai_ranked_articles():
             return _cached_result
 
         result = _fetch_and_rank_articles()
-        _cached_result = result
-        _ai_cache_created_at = time.monotonic()
+        
+        if result[1]:
+            _cached_result = result
+            _ai_cache_created_at = time.monotonic()
 
         return result
 
 
 def _fetch_and_rank_articles():
-    # Bound the network wait so the interaction cannot remain pending forever.
-    with urlopen(RSS_URL, timeout=10) as response:
-        feed = feedparser.parse(response.read())
-
-    articles = []
-
-    for article in feed.entries:
-        articles.append(
-            {
-                "id": article.get("id") or article.get("link"),
-                "title": article.get("title", ""),
-                "summary": article.get("summary", ""),
-                "link": article.get("link", ""),
-                "published": article.get("published", "")
-            }
-        )
-        
-    filtered_articles = filter_articles(articles)
-
-    with open("ai_input.txt", "w", encoding="utf-8") as file:
-        json.dump(filtered_articles, file, indent=2, ensure_ascii=False)
-
-
     try:
-        ai_response = call_ai(filtered_articles)
+        raise Exception("TEST EXCEPTION")
 
-        ai_data = json.loads(ai_response)
+        # Bound the network wait so the interaction cannot remain pending forever.
+        with urlopen(RSS_URL, timeout=10) as response:
+            feed = feedparser.parse(response.read())
 
-        with open("ai_response.txt", "w", encoding="utf-8") as file:
-            json.dump(ai_data, file, indent=2, ensure_ascii=False)
+        articles = []
 
-        ranked_articles = ai_data.get("ranked_articles")
-        if not isinstance(ranked_articles, list):
-            raise ValueError("The AI response is missing the ranked_articles list.")
+        for article in feed.entries:
+            articles.append(
+                {
+                    "id": article.get("id") or article.get("link"),
+                    "title": article.get("title", ""),
+                    "summary": article.get("summary", ""),
+                    "link": article.get("link", ""),
+                    "published": article.get("published", "")
+                }
+            )
+            
+        filtered_articles = filter_articles(articles)
 
-        return ranked_articles, True
-    
-    except (APIError, json.JSONDecodeError, ValueError) as error:
-        return filtered_articles, False
+        try:            
+            with open("ai_input.txt", "w", encoding="utf-8") as file:
+                json.dump(filtered_articles, file, indent=2, ensure_ascii=False)
+
+            ai_response = call_ai(filtered_articles)
+
+            ai_data = json.loads(ai_response)
+
+            with open("ai_response.txt", "w", encoding="utf-8") as file:
+                json.dump(ai_data, file, indent=2, ensure_ascii=False)
+
+            ranked_articles = ai_data.get("ranked_articles")
+            if not isinstance(ranked_articles, list):
+                raise ValueError("The AI response is missing the ranked_articles list.")
+
+            return ranked_articles, True
+        
+        except Exception as error:
+            logger.exception("Error with the AI call.", error)
+            return filtered_articles, False
+    except Exception as error:
+        logger.exception("Error fetching articles.", error) 
+        return [], False
+
 
 def filter_articles(articles):
-    filtered_articles = []
-    
-    end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(hours=12)
-    
-    for article in articles:
+    try:
+        filtered_articles = []
         
-        if not article["published"]:
-            continue
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(hours=12)
         
-        published = datetime.strptime(article["published"], "%a, %d %b %Y %H:%M:%S %z")
+        for article in articles:
+            
+            if not article["published"]:
+                continue
+            
+            published = datetime.strptime(article["published"], "%a, %d %b %Y %H:%M:%S %z")
 
-        if published > start_date:
-            filtered_articles.append(article)
+            if published > start_date:
+                filtered_articles.append(article)
 
-    return filtered_articles
-
+        return filtered_articles
+    except:
+        raise

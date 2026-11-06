@@ -18,26 +18,26 @@ KEYWORDS_FILE = CONFIG_DIR / "keywords.json"
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 
-def get_latest_articles():
-    # Bound the network wait so the interaction cannot remain pending forever.
-    with urlopen(RSS_URL, timeout=10) as response:
-        feed = feedparser.parse(response.read())
+# def get_latest_articles():
+#     # Bound the network wait so the interaction cannot remain pending forever.
+#     with urlopen(RSS_URL, timeout=10) as response:
+#         feed = feedparser.parse(response.read())
 
-    articles = [
-        {
-            "id": article.get("id") or article.get("link"),
-            "title": article.get("title", ""),
-            "summary": article.get("summary", ""),
-            "link": article.get("link", ""),
-            "published": article.get("published", "")
-        }
-        for article in feed.entries
-    ]
+#     articles = [
+#         {
+#             "id": article.get("id") or article.get("link"),
+#             "title": article.get("title", ""),
+#             "summary": article.get("summary", ""),
+#             "link": article.get("link", ""),
+#             "published": article.get("published", "")
+#         }
+#         for article in feed.entries
+#     ]
 
-    # with open("test.txt", "w", encoding="utf-8") as file:
-    #     json.dump(articles, file, indent=2, ensure_ascii=False)
+#     # with open("test.txt", "w", encoding="utf-8") as file:
+#     #     json.dump(articles, file, indent=2, ensure_ascii=False)
 
-    return articles
+#     return articles
 
 def get_svt_articles():
     articles_by_id = {}

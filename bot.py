@@ -2,15 +2,16 @@ import asyncio
 import os
 import discord
 import json
+import logging
 
 from dotenv import load_dotenv
 from datetime import time
 from zoneinfo import ZoneInfo
 from discord.ext import tasks
 from pathlib import Path
+from config.logging_config import configure_logging
 
 from sources import (
-    get_latest_articles, 
     get_latest_cves,
     get_svt_articles,
     filter_svt_articles
@@ -20,6 +21,9 @@ from cve_selection import select_relevant_cves
 from ai_ranking import get_ai_ranked_articles
 
 load_dotenv()
+configure_logging()
+
+logger = logging.getLogger(__name__)
 
 token = os.getenv("DISCORD_TOKEN")
 if not token:
@@ -70,6 +74,9 @@ EVENING_TIME = time(
 async def create_briefing_message(period):
     articles, ai_ranked = await asyncio.to_thread(get_ai_ranked_articles)
     cves = await get_relevant_cves()
+
+
+
     return make_briefing(articles, cves[:3], period, ai_ranked)
 
 async def send_scheduled_briefing(period):
@@ -93,65 +100,70 @@ async def send_scheduled_briefing(period):
 
 @tasks.loop(time=MORNING_TIME)
 async def scheduled_morning_briefing():
+    logger.info("Sending morning brief...")
     await send_scheduled_briefing("morning")
 
 @tasks.loop(time=EVENING_TIME)
 async def scheduled_evening_briefing():
+    logger.info("Sending evening brief...")
     await send_scheduled_briefing("evening")
 
 async def check_svt_feed_once():
-    entries = await asyncio.to_thread(get_svt_articles)
+    try:
+        entries = await asyncio.to_thread(get_svt_articles)
 
-    current_ids = {
-        entry.get("id") or entry.get("link")
-        for entry in entries
-        if entry.get("id") or entry.get("link")
-    }
+        current_ids = {
+            entry.get("id") or entry.get("link")
+            for entry in entries
+            if entry.get("id") or entry.get("link")
+        }
 
-    seen_ids = load_seen_svt_ids()
+        seen_ids = load_seen_svt_ids()
 
-    if seen_ids is None:
-        save_seen_svt_ids(current_ids)
-        return
-    
-    new_entries = []
-    
-    for entry in reversed(entries):
-        article_id = entry.get("id") or entry.get("link")
+        if seen_ids is None:
+            save_seen_svt_ids(current_ids)
+            return
+        
+        new_entries = []
+        
+        for entry in reversed(entries):
+            article_id = entry.get("id") or entry.get("link")
 
-        if article_id and article_id not in seen_ids:
-            new_entries.append(entry)
+            if article_id and article_id not in seen_ids:
+                new_entries.append(entry)
 
-    if not new_entries:
-        return
+        if not new_entries:
+            return
 
-    relevant_entries = filter_svt_articles(new_entries)
+        relevant_entries = filter_svt_articles(new_entries)
 
-    channel_ids = [
-        int(value.strip())
-        for value in os.getenv("BRIEFING_CHANNEL_IDS", "").split(",")
-        if value.strip()
-    ]    
+        channel_ids = [
+            int(value.strip())
+            for value in os.getenv("BRIEFING_CHANNEL_IDS", "").split(",")
+            if value.strip()
+        ]    
 
-    if not channel_ids:
-        return
+        if not channel_ids:
+            return
 
-    for entry in new_entries:
-        article_id = entry.get("id") or entry.get("link")
+        for entry in new_entries:
+            article_id = entry.get("id") or entry.get("link")
 
-        if entry in relevant_entries: 
-            message = format_svt_article(entry)
+            if entry in relevant_entries: 
+                message = format_svt_article(entry)
 
-            for channel_id in channel_ids:
-                channel = client.get_channel(channel_id)
+                for channel_id in channel_ids:
+                    channel = client.get_channel(channel_id)
 
-                if channel is None:
-                    channel = await client.fetch_channel(channel_id)
-                    
-                await channel.send(message, suppress_embeds=True)
-            
-        seen_ids.add(article_id)
-        save_seen_svt_ids(seen_ids)
+                    if channel is None:
+                        channel = await client.fetch_channel(channel_id)
+                        
+                    await channel.send(message, suppress_embeds=True)
+                
+            seen_ids.add(article_id)
+            save_seen_svt_ids(seen_ids)
+    except Exception as e :
+        logger.exception(f"Something went wrong idk figure it out\n{e}")
 
 @tasks.loop(minutes=10)
 async def check_svt_feed():
