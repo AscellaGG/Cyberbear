@@ -73,6 +73,12 @@ async def create_briefing_message(period):
     return make_briefing(articles, cves[:3], period, ai_ranked)
 
 async def send_scheduled_briefing(period):
+    now = datetime.now(ZoneInfo("Europe/Stockholm"))
+
+    if now.weekday() >= 5:
+        logger.info("Hoppar över %s-briefing: helg.", period)
+        return    
+    
     await client.wait_until_ready()
 
     message = await create_briefing_message(period)
