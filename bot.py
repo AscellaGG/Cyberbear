@@ -25,6 +25,9 @@ token = os.getenv("DISCORD_TOKEN")
 if not token:
     raise RuntimeError("DISCORD_TOKEN saknas. Lägg till den i .env-filen.")
 
+BOT_ENV = os.getenv("BOT_ENV", "production").lower()
+IS_TEST = BOT_ENV == "test"
+
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
@@ -192,32 +195,33 @@ async def check_cve(interaction: discord.Interaction):
 # --------------------
 # FOR TESTING PURPOSES
 
-# @tree.command(name="preview_svt", description="Visa SVT-artiklar som filtret väljer.")
-# async def preview_svt(interaction: discord.Interaction):
-#     await interaction.response.defer(thinking=True, ephemeral=True)
+if IS_TEST:
+    @tree.command(name="preview_svt", description="Visa SVT-artiklar som filtret väljer.")
+    async def preview_svt(interaction: discord.Interaction):
+        await interaction.response.defer(thinking=True, ephemeral=True)
 
-#     entries = await asyncio.to_thread(get_svt_articles)
-#     matches = await asyncio.to_thread(filter_svt_articles, entries)
+        entries = await asyncio.to_thread(get_svt_articles)
+        matches = await asyncio.to_thread(filter_svt_articles, entries)
 
-#     if not matches:
-#         await interaction.followup.send(
-#             f"Hämtade {len(entries)} artiklar från SVT, men filtret hittade inga träffar.",
-#             ephemeral=True,
-#         )
-#         return
+        if not matches:
+            await interaction.followup.send(
+                f"Hämtade {len(entries)} artiklar från SVT, men filtret hittade inga träffar.",
+                ephemeral=True,
+            )
+            return
 
-#     lines = ["**SVT-träffar i det aktuella flödet:**"]
+        lines = ["**SVT-träffar i det aktuella flödet:**"]
 
-#     for article in matches[:10]:
-#         title = article.get("title", "Artikel utan rubrik")
-#         link = article.get("link", "")
-#         lines.append(f"• [{title}]({link})")
+        for article in matches[:10]:
+            title = article.get("title", "Artikel utan rubrik")
+            link = article.get("link", "")
+            lines.append(f"• [{title}]({link})")
 
-#     await interaction.followup.send("\n".join(lines), ephemeral=True)
+        await interaction.followup.send("\n".join(lines), ephemeral=True)
 
-# @tree.command(name="test", description="test")
-# async def test(interaction: discord.Interaction):
-#     await interaction.response.send_message("Hello!")
+    @tree.command(name="test", description="test")
+    async def test(interaction: discord.Interaction):
+        await interaction.response.send_message("Hello!")
 
 # --------------------
 
