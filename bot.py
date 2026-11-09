@@ -4,7 +4,7 @@ import discord
 import json
 
 from dotenv import load_dotenv
-from datetime import time
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 from discord.ext import tasks
 from pathlib import Path
