@@ -6,7 +6,7 @@ import feedparser
 import json
 import threading
 import time
-from datetime import datetime, timedelta, timezone 
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from pathlib import Path
 import logging
@@ -67,7 +67,7 @@ def get_ai_ranked_articles():
             return _cached_result
 
         result = _fetch_and_rank_articles()
-        
+
         if result[1]:
             _cached_result = result
             _ai_cache_created_at = time.monotonic()
@@ -93,10 +93,10 @@ def _fetch_and_rank_articles():
                     "published": article.get("published", "")
                 }
             )
-            
+
         filtered_articles = filter_articles(articles)
 
-        try:            
+        try:
             with open("ai_input.txt", "w", encoding="utf-8") as file:
                 json.dump(filtered_articles, file, indent=2, ensure_ascii=False)
 
@@ -112,26 +112,26 @@ def _fetch_and_rank_articles():
                 raise ValueError("The AI response is missing the ranked_articles list.")
 
             return ranked_articles, True
-        
+
         except Exception as error:
             logger.exception("Error with the AI call.")
             return filtered_articles, False
     except Exception as error:
-        logger.exception("Error fetching articles.") 
+        logger.exception("Error fetching articles.")
         return [], False
 
 
 def filter_articles(articles):
     filtered_articles = []
-    
+
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(hours=12)
-    
+
     for article in articles:
-        
+
         if not article["published"]:
             continue
-        
+
         published = datetime.strptime(article["published"], "%a, %d %b %Y %H:%M:%S %z")
 
         if published > start_date:

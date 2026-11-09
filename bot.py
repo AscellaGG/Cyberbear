@@ -76,7 +76,7 @@ async def send_scheduled_briefing(period):
 
         if channel is None:
             channel = await client.fetch_channel(channel_id)
-        
+
         await channel.send(message, suppress_embeds=True)
 
     return len(channel_ids)
@@ -107,7 +107,7 @@ async def check_svt_feed_once():
         int(value.strip())
         for value in os.getenv("BRIEFING_CHANNEL_IDS", "").split(",")
         if value.strip()
-    ]    
+    ]
 
     if not channel_ids:
         raise RuntimeError("No briefing channels are configured.")
@@ -136,9 +136,9 @@ async def check_svt_feed_once():
 
             if channel is None:
                 channel = await client.fetch_channel(channel_id)
-                
+
             await channel.send(message, suppress_embeds=True)
-        
+
         seen_ids.add(article_id)
         save_seen_svt_ids(seen_ids)
         posted_count += 1
