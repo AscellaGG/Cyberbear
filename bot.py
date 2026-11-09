@@ -13,7 +13,14 @@ from config.logging_config import configure_logging
 
 from briefing import make_briefing, shorten_description
 from cves import get_relevant_cves
-from svt_monitor import get_relevant_svt_articles, format_svt_article, load_seen_svt_ids, save_seen_svt_ids
+from svt_monitor import (
+    filter_svt_articles,
+    format_svt_article,
+    get_relevant_svt_articles,
+    get_svt_articles,
+    load_seen_svt_ids,
+    save_seen_svt_ids,
+)
 from ai_ranking import get_ai_ranked_articles
 
 load_dotenv()
@@ -53,13 +60,16 @@ async def create_briefing_message(period):
 async def send_scheduled_briefing(period):
     await client.wait_until_ready()
 
-    message = await create_briefing_message(period)
-
     channel_ids = [
         int(value.strip())
         for value in os.getenv("BRIEFING_CHANNEL_IDS", "").split(",")
         if value.strip()
     ]
+
+    if not channel_ids:
+        raise RuntimeError("No briefing channels are configured.")
+
+    message = await create_briefing_message(period)
 
     for channel_id in channel_ids:
         channel = client.get_channel(channel_id)
@@ -69,58 +79,79 @@ async def send_scheduled_briefing(period):
         
         await channel.send(message, suppress_embeds=True)
 
+    return len(channel_ids)
+
+async def run_scheduled_briefing(period):
+    try:
+        logger.info("Starting %s scheduled briefing.", period)
+        sent_channel_count = await send_scheduled_briefing(period)
+    except Exception:
+        logger.exception("Scheduled %s briefing failed.", period)
+    else:
+        logger.info(
+            "Scheduled %s briefing sent to %d channel(s).",
+            period,
+            sent_channel_count,
+        )
+
 @tasks.loop(time=MORNING_TIME)
 async def scheduled_morning_briefing():
-    logger.info("Sending morning brief...")
-    await send_scheduled_briefing("morning")
+    await run_scheduled_briefing("morning")
 
 @tasks.loop(time=EVENING_TIME)
 async def scheduled_evening_briefing():
-    logger.info("Sending evening brief...")
-    await send_scheduled_briefing("evening")
+    await run_scheduled_briefing("evening")
 
 async def check_svt_feed_once():
-    try:
-        channel_ids = [
-            int(value.strip())
-            for value in os.getenv("BRIEFING_CHANNEL_IDS", "").split(",")
-            if value.strip()
-        ]    
+    channel_ids = [
+        int(value.strip())
+        for value in os.getenv("BRIEFING_CHANNEL_IDS", "").split(",")
+        if value.strip()
+    ]    
 
-        if not channel_ids:
-            return
+    if not channel_ids:
+        raise RuntimeError("No briefing channels are configured.")
 
-        articles = await get_relevant_svt_articles()
+    articles = await get_relevant_svt_articles()
 
-        seen_ids = load_seen_svt_ids()
+    if articles is None:
+        raise TypeError("SVT article check returned None instead of a list.")
 
-        if articles:
-            for entry in articles:
-                article_id = entry.get("id") or entry.get("link")
+    if not articles:
+        return 0
 
-                message = format_svt_article(entry)
+    seen_ids = load_seen_svt_ids() or set()
+    posted_count = 0
 
-                for channel_id in channel_ids:
-                    channel = client.get_channel(channel_id)
+    for entry in articles:
+        article_id = entry.get("id") or entry.get("link")
+        if not article_id:
+            logger.warning("Skipping an SVT article without an ID or link.")
+            continue
 
-                    if channel is None:
-                        channel = await client.fetch_channel(channel_id)
-                        
-                    await channel.send(message, suppress_embeds=True)
+        message = format_svt_article(entry)
+
+        for channel_id in channel_ids:
+            channel = client.get_channel(channel_id)
+
+            if channel is None:
+                channel = await client.fetch_channel(channel_id)
                 
-                seen_ids.add(article_id)
-                save_seen_svt_ids(seen_ids)
-                
-                return True
-        elif articles == []:
-            return False
+            await channel.send(message, suppress_embeds=True)
+        
+        seen_ids.add(article_id)
+        save_seen_svt_ids(seen_ids)
+        posted_count += 1
 
-    except Exception as error :
-        logger.exception(error)
+    return posted_count
 
 @tasks.loop(minutes=10)
 async def check_svt_feed():
-    await check_svt_feed_once()
+    try:
+        posted_count = await check_svt_feed_once()
+        logger.info("SVT check completed; posted %d article(s).", posted_count)
+    except Exception:
+        logger.exception("Scheduled SVT check failed.")
 
 @check_svt_feed.before_loop
 async def before_check_svt_feed():
@@ -128,9 +159,18 @@ async def before_check_svt_feed():
 
 @client.event
 async def on_ready():
-    synced = await tree.sync()
-    print(f"Synkade {len(synced)} globala kommandon.")
-    print(f"Inloggad som {client.user}.")
+    try:
+        synced = await tree.sync()
+    except Exception:
+        logger.exception("Failed to sync application commands.")
+    else:
+        logger.info("Synced %d global application command(s).", len(synced))
+
+    logger.info("Logged in as %s.", client.user)
+
+    if IS_TEST:
+        logger.info("Test environment: automatic scheduled jobs are disabled.")
+        return
 
     if not scheduled_morning_briefing.is_running():
         scheduled_morning_briefing.start()
@@ -157,7 +197,7 @@ async def check_svt(interaction: discord.Interaction):
 
     if new_articles:
         await interaction.followup.send(
-            "SVT-flödet har kontrollerats. Eventuella nya relevanta artiklar skickas till briefingkanalerna.",
+            f"SVT-kontrollen är klar. Skickade {new_articles} ny(a) artikel/artiklar.",
             ephemeral=True,
         )
     else:
@@ -224,5 +264,38 @@ if IS_TEST:
         await interaction.response.send_message("Hello!")
 
 # --------------------
+
+
+@tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction,
+    error: discord.app_commands.AppCommandError,
+):
+    command_name = interaction.command.name if interaction.command else "unknown"
+
+    original_error = (
+        error.original
+        if isinstance(error, discord.app_commands.CommandInvokeError)
+        else error
+    )
+
+    logger.error(
+        "Command /%s failed: %s",
+        command_name,
+        original_error,
+        exc_info=(
+            type(original_error),
+            original_error,
+            original_error.__traceback__,
+        ),
+    )
+
+    message = "Something went wrong while Cyberbear was running that command."
+
+    if interaction.response.is_done():
+        await interaction.followup.send(message, ephemeral=True)
+    else:
+        await interaction.response.send_message(message, ephemeral=True)
+
 
 client.run(token)

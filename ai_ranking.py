@@ -24,39 +24,34 @@ _cached_result = None
 _ai_cache_created_at = 0.0
 
 def call_ai(user_content):
-    try:
-        sysfile = ""
+    sysfile = ""
 
-        with SYSTEM_PROMPT_FILE.open(encoding="utf-8") as file:
-            sysfile = file.read()
+    with SYSTEM_PROMPT_FILE.open(encoding="utf-8") as file:
+        sysfile = file.read()
 
-        articles_json = json.dumps(user_content, ensure_ascii=False, indent=2)
+    articles_json = json.dumps(user_content, ensure_ascii=False, indent=2)
 
-        print("Calling AI...")
+    logger.info("Calling AI...")
 
-        response = client.messages.create(
-            model="claude-haiku-5-5",
-            max_tokens=20000,
-            thinking={"type": "disabled"},
-            system=sysfile,
-            messages=[
-                {"role": "user", "content": articles_json}
-            ],
-        )
+    response = client.messages.create(
+        model="claude-haiku-5-5",
+        max_tokens=20000,
+        thinking={"type": "disabled"},
+        system=sysfile,
+        messages=[
+            {"role": "user", "content": articles_json}
+        ],
+    )
 
-        response_text = next(
-            (block.text for block in response.content if block.type == "text"),
-            None,
-        )
-        if response_text is None:
-            raise ValueError("The AI response did not contain a text block.")
-        else:
-            print("AI call successfull")
+    response_text = next(
+        (block.text for block in response.content if block.type == "text"),
+        None,
+    )
+    if response_text is None:
+        raise ValueError("The AI response did not contain a text block.")
 
-        return response_text
-    except:
-        logger.exception("AI call failed")
-        raise
+    logger.info("AI call succeeded.")
+    return response_text
 
 
 def get_ai_ranked_articles():
@@ -68,7 +63,7 @@ def get_ai_ranked_articles():
             _cached_result is not None
             and now - _ai_cache_created_at < AI_CACHE_SECONDS
         ):
-            print("Using cached AI-ranked articles.")
+            logger.info("Using cached AI-ranked articles.")
             return _cached_result
 
         result = _fetch_and_rank_articles()
@@ -119,30 +114,27 @@ def _fetch_and_rank_articles():
             return ranked_articles, True
         
         except Exception as error:
-            logger.exception("Error with the AI call.", error)
+            logger.exception("Error with the AI call.")
             return filtered_articles, False
     except Exception as error:
-        logger.exception("Error fetching articles.", error) 
+        logger.exception("Error fetching articles.") 
         return [], False
 
 
 def filter_articles(articles):
-    try:
-        filtered_articles = []
+    filtered_articles = []
+    
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(hours=12)
+    
+    for article in articles:
         
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(hours=12)
+        if not article["published"]:
+            continue
         
-        for article in articles:
-            
-            if not article["published"]:
-                continue
-            
-            published = datetime.strptime(article["published"], "%a, %d %b %Y %H:%M:%S %z")
+        published = datetime.strptime(article["published"], "%a, %d %b %Y %H:%M:%S %z")
 
-            if published > start_date:
-                filtered_articles.append(article)
+        if published > start_date:
+            filtered_articles.append(article)
 
-        return filtered_articles
-    except:
-        raise
+    return filtered_articles
