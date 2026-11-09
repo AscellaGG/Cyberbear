@@ -5,10 +5,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from pathlib import Path
 from calendar import timegm
-import logging
 import asyncio
-
-logger = logging.getLogger(__name__)
 
 SVT_RSS_URLS = [
     "https://www.svt.se/nyheter/inrikes/rss.xml",
@@ -21,95 +18,77 @@ CONFIG_DIR = Path(__file__).resolve().parent / "config"
 KEYWORDS_FILE = CONFIG_DIR / "keywords.json"
 
 def get_svt_articles():
-    try:
-        articles_by_id = {}
+    articles_by_id = {}
 
-        for rss_url in SVT_RSS_URLS:
-            with urlopen(rss_url, timeout=10) as response:
-                feed = feedparser.parse(response.read())
-            
-            for article in feed.entries:
-                article_id = article.get("id") or article.get("link")
-
-                if article_id:
-                    articles_by_id[article_id] = article
+    for rss_url in SVT_RSS_URLS:
+        with urlopen(rss_url, timeout=10) as response:
+            feed = feedparser.parse(response.read())
         
-        articles = list(articles_by_id.values())
+        for article in feed.entries:
+            article_id = article.get("id") or article.get("link")
 
-        articles.sort(
-            key=lambda article: (
-                timegm(article.get("published_parsed"))
-                if article.get("published_parsed")
-                else 0
-            ),
-            reverse=True,
-        )
+            if article_id:
+                articles_by_id[article_id] = article
+    
+    articles = list(articles_by_id.values())
 
-        return articles
+    articles.sort(
+        key=lambda article: (
+            timegm(article.get("published_parsed"))
+            if article.get("published_parsed")
+            else 0
+        ),
+        reverse=True,
+    )
 
-    except Exception as error:
-        logger.error("Failed to fetch SVT articles.")
-        raise
+    return articles
 
 def filter_svt_articles(entries):
-    try:
-        with KEYWORDS_FILE.open(encoding="utf-8") as file:
-            keywords = json.load(file)
-        
-        direct_keywords = keywords["direct_match"]
-        contextual_keywords = keywords["contextual_match"]
-        attack_signals = contextual_keywords["attack_signals"]
-        systems_or_targets = contextual_keywords["systems_or_targets"]
+    with KEYWORDS_FILE.open(encoding="utf-8") as file:
+        keywords = json.load(file)
+    
+    direct_keywords = keywords["direct_match"]
+    contextual_keywords = keywords["contextual_match"]
+    attack_signals = contextual_keywords["attack_signals"]
+    systems_or_targets = contextual_keywords["systems_or_targets"]
 
-        relevant_articles = []
+    relevant_articles = []
 
-        for article in entries:
-            title = article.get("title", "")
-            summary = article.get("summary", "")
-            text = f"{title} {summary}".casefold()
+    for article in entries:
+        title = article.get("title", "")
+        summary = article.get("summary", "")
+        text = f"{title} {summary}".casefold()
 
-            has_direct_keyword = any(
-                word.casefold() in text
-                for word in direct_keywords
-            )
+        has_direct_keyword = any(
+            word.casefold() in text
+            for word in direct_keywords
+        )
 
-            has_attack_signal = any(
-                word.casefold() in text
-                for word in attack_signals
-            )
+        has_attack_signal = any(
+            word.casefold() in text
+            for word in attack_signals
+        )
 
-            has_system_or_target = any(
-                word.casefold() in text
-                for word in systems_or_targets
-            )
+        has_system_or_target = any(
+            word.casefold() in text
+            for word in systems_or_targets
+        )
 
-            if has_direct_keyword or (has_attack_signal and has_system_or_target):
-                relevant_articles.append(article)
+        if has_direct_keyword or (has_attack_signal and has_system_or_target):
+            relevant_articles.append(article)
 
-        return relevant_articles
-
-    except Exception as error:
-        logging.error("There was an error filtering the articles.")
-        raise
+    return relevant_articles
 
 def load_seen_svt_ids():
-    try:
-        if not SVT_STATE_FILE.exists():
-            return None
-        
-        with SVT_STATE_FILE.open(encoding="utf-8") as file:
-            return set(json.load(file))
-    except Exception as error:
-        logger.error("Could not load sent_svt_articles.json.")
-        raise
+    if not SVT_STATE_FILE.exists():
+        return None
+    
+    with SVT_STATE_FILE.open(encoding="utf-8") as file:
+        return set(json.load(file))
 
 def save_seen_svt_ids(seen_ids):
-    try:
-        with SVT_STATE_FILE.open("w", encoding="utf-8") as file:
-            json.dump(sorted(seen_ids), file, indent=2)
-    except Exception as error:
-        logger.exception("Could not save to sent_svt_articles.json.")
-        raise
+    with SVT_STATE_FILE.open("w", encoding="utf-8") as file:
+        json.dump(sorted(seen_ids), file, indent=2)
 
 def format_svt_article(article):
     title = article.get("title", "Artikel utan rubrik")
