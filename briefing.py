@@ -1,7 +1,8 @@
 import json
 import random
-from pathlib import Path
 import os
+
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -31,7 +32,6 @@ def shorten_description(text, max_length=300):
     return shortened + "…"
 
 def make_briefing(articles, cves, period, successfull):
-
     phrase = get_briefing_phrase(period)
 
     lines = [
@@ -41,13 +41,16 @@ def make_briefing(articles, cves, period, successfull):
         "",
     ]
 
-    for article in articles[:3]:
-        title = article.get("title", "Artikel utan rubrik")
-        link = article.get("link", "")
-        lines.append(f"**{title}**")
-        if link:
-            lines.append(f"[Läs artikeln]({link})")
-        lines.append("")
+    if articles: 
+        for article in articles[:3]:
+            title = article.get("title", "Artikel utan rubrik")
+            link = article.get("link", "")
+            lines.append(f"**{title}**")
+            if link:
+                lines.append(f"[Läs artikeln]({link})")
+            lines.append("")
+    else:
+        lines.append("Hittade inga artiklar...\n")
 
     lines.extend([
         "## 🛡️  Nya sårbarheter:"
