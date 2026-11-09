@@ -23,13 +23,13 @@ def get_svt_articles():
     for rss_url in SVT_RSS_URLS:
         with urlopen(rss_url, timeout=10) as response:
             feed = feedparser.parse(response.read())
-        
+
         for article in feed.entries:
             article_id = article.get("id") or article.get("link")
 
             if article_id:
                 articles_by_id[article_id] = article
-    
+
     articles = list(articles_by_id.values())
 
     articles.sort(
@@ -46,7 +46,7 @@ def get_svt_articles():
 def filter_svt_articles(entries):
     with KEYWORDS_FILE.open(encoding="utf-8") as file:
         keywords = json.load(file)
-    
+
     direct_keywords = keywords["direct_match"]
     contextual_keywords = keywords["contextual_match"]
     attack_signals = contextual_keywords["attack_signals"]
@@ -82,7 +82,7 @@ def filter_svt_articles(entries):
 def load_seen_svt_ids():
     if not SVT_STATE_FILE.exists():
         return None
-    
+
     with SVT_STATE_FILE.open(encoding="utf-8") as file:
         return set(json.load(file))
 
@@ -114,9 +114,9 @@ async def get_relevant_svt_articles():
     if seen_ids is None:
         save_seen_svt_ids(current_ids)
         return []
-    
+
     new_entries = []
-    
+
     for entry in reversed(entries):
         article_id = entry.get("id") or entry.get("link")
 
@@ -127,5 +127,5 @@ async def get_relevant_svt_articles():
         return []
 
     relevant_entries = filter_svt_articles(new_entries)
-    
+
     return relevant_entries
