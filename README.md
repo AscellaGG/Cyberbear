@@ -130,6 +130,5 @@ The bot must remain running and connected for the scheduled briefing and SVT mon
 
 - Remember what articles have been posted from The Hacker News, as well as cves so night and morning briefings don't have the same stuff
 - Add known-exploited vulnerability data to CVE prioritization.
-- Add more SVT feeds because the current feed does not cover every relevant story.
 - Send patchnotes on updates
 - Extra test commands, preferably only available to Testbear
