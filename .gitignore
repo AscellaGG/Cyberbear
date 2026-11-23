@@ -35,5 +35,6 @@ Thumbs.db
 
 
 sent_svt_articles.json
+processed_articles.json
 ai_response.txt
 ai_input.txt
