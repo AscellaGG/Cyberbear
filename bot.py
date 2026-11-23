@@ -13,15 +13,8 @@ from config.logging_config import configure_logging
 
 from briefing import make_briefing, shorten_description
 from cves import get_relevant_cves
-from svt_monitor import (
-    filter_svt_articles,
-    format_svt_article,
-    get_relevant_svt_articles,
-    get_svt_articles,
-    load_seen_svt_ids,
-    save_seen_svt_ids,
-)
 from ai_ranking import get_ai_ranked_articles
+from feeds import check_all_feeds_once
 
 load_dotenv()
 configure_logging()
@@ -108,7 +101,7 @@ async def scheduled_morning_briefing():
 async def scheduled_evening_briefing():
     await run_scheduled_briefing("evening")
 
-async def check_svt_feed_once():
+async def send_feed_message(message):
     channel_ids = [
         int(value.strip())
         for value in os.getenv("BRIEFING_CHANNEL_IDS", "").split(",")
@@ -116,51 +109,26 @@ async def check_svt_feed_once():
     ]
 
     if not channel_ids:
-        raise RuntimeError("No briefing channels are configured.")
+        raise RuntimeError("No breifinf channels are configured.")
 
-    articles = await get_relevant_svt_articles()
+    for channel_id in channel_ids:
+        channel = client.get_channel(channel_id)
 
-    if articles is None:
-        raise TypeError("SVT article check returned None instead of a list.")
+        if channel is None:
+            channel = await client.fetch_channel(channel_id)
 
-    if not articles:
-        return 0
-
-    seen_ids = load_seen_svt_ids() or set()
-    posted_count = 0
-
-    for entry in articles:
-        article_id = entry.get("id") or entry.get("link")
-        if not article_id:
-            logger.warning("Skipping an SVT article without an ID or link.")
-            continue
-
-        message = format_svt_article(entry)
-
-        for channel_id in channel_ids:
-            channel = client.get_channel(channel_id)
-
-            if channel is None:
-                channel = await client.fetch_channel(channel_id)
-
-            await channel.send(message, suppress_embeds=True)
-
-        seen_ids.add(article_id)
-        save_seen_svt_ids(seen_ids)
-        posted_count += 1
-
-    return posted_count
+        await channel.send(message, suppress_embeds=True)
 
 @tasks.loop(minutes=10)
-async def check_svt_feed():
+async def scheduled_feed_check():
     try:
-        posted_count = await check_svt_feed_once()
-        logger.info("SVT check completed; posted %d article(s).", posted_count)
+        posted_count = await check_all_feeds_once(send_feed_message)
+        logger.info("Feed check completed; posted %d article(s).", posted_count)
     except Exception:
-        logger.exception("Scheduled SVT check failed.")
+        logger.exception("Scheduled feed check failed.")
 
-@check_svt_feed.before_loop
-async def before_check_svt_feed():
+@scheduled_feed_check.before_loop
+async def before_check_feeds():
     await client.wait_until_ready()
 
 @client.event
@@ -184,8 +152,8 @@ async def on_ready():
     if not scheduled_evening_briefing.is_running():
         scheduled_evening_briefing.start()
 
-    if not check_svt_feed.is_running():
-        check_svt_feed.start()
+    if not scheduled_feed_check.is_running():
+        scheduled_feed_check.start()
 
 @tree.command(name="brief", description="Få en briefing på nyheter inom cybersäkerhet från Cyberbear.")
 async def brief(interaction: discord.Interaction):
@@ -195,15 +163,15 @@ async def brief(interaction: discord.Interaction):
 
     await interaction.followup.send(message, suppress_embeds=True)
 
-@tree.command(name="check_svt", description="Kontrollera SVT-flödet nu.")
-async def check_svt(interaction: discord.Interaction):
+@tree.command(name="check_feeds", description="Kontrollera nyhets-flöden nu.")
+async def check_feeds_command(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True, ephemeral=True)
 
-    new_articles = await check_svt_feed_once()
+    new_articles = await check_all_feeds_once(send_feed_message)
 
     if new_articles:
         await interaction.followup.send(
-            f"SVT-kontrollen är klar. Skickade {new_articles} ny(a) artikel/artiklar.",
+            f"Feed-kontrollen är klar. Skickade {new_articles} ny(a) artikel/artiklar.",
             ephemeral=True,
         )
     else:

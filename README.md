@@ -1,6 +1,6 @@
 # Cyberbear Discord Bot
 
-Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerability information. It creates morning and evening briefings with AI-ranked articles from The Hacker News and recent CVEs, and monitors SVT News for new Swedish cybersecurity-related stories.
+Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerability information. It creates morning and evening briefings with AI-ranked articles from The Hacker News and recent CVEs, and monitors RSS feeds for cybersecurity-related articles.
 
 ## Features
 
@@ -13,10 +13,10 @@ Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerabili
 - A morning briefing runs daily at 08:00 and an evening briefing at 20:00 in the `Europe/Stockholm` time zone.
 - Both scheduled briefings are sent to the Discord channels configured in `BRIEFING_CHANNEL_IDS`.
 - Briefing introductions are chosen randomly from the `morning` or `evening` phrase list in `config/phrases.json`, depending on which scheduled briefing is running.
-- SVT News is checked at bot startup and then every 10 minutes for new articles matching the keyword rules in `config/keywords.json`.
-- Matching SVT articles are sent to the same channels configured in `BRIEFING_CHANNEL_IDS`.
-- `/check_svt` triggers an SVT check immediately. Any new matching articles are sent to the briefing channels.
-- Previously handled SVT article IDs are stored in `sent_svt_articles.json` to prevent duplicate posts. On the first run, the current articles in the feed are recorded without posting them, so old stories are not sent in a batch.
+- In production, configured RSS feeds are checked every 10 minutes. `/check_feeds` checks all configured feeds immediately.
+- SVT articles are filtered using the keyword rules in `config/keywords.json`; the CERT feed currently sends every new article without filtering.
+- Feed articles are sent to the channels configured in `BRIEFING_CHANNEL_IDS`.
+- Processed article IDs are stored by feed in `processed_articles.json` to prevent duplicate posts. The first check for a feed records its current articles as a baseline without posting them, so adding a feed does not send its existing backlog.
 - Link previews are suppressed in bot messages.
 
 The watchlist uses broad cybersecurity product areas and normalized whole-word or phrase matching against NVD's affected-product hints. CVEs without affected-product data, or whose product names do not match a watchlist term, are omitted. The current selection does not yet use known-exploited vulnerability data. If more than 250 CVEs are published in the 24-hour window, the response may not include every CVE.
@@ -48,9 +48,13 @@ Keep both API keys secret. The `.env` file is excluded from Git. Anthropic API u
 
 Invite the bot to each Discord server with the `bot` and `applications.commands` OAuth2 scopes. The bot uses global application commands, so updates may take time to appear.
 
-## SVT keyword filtering
+## RSS feeds
 
-`config/keywords.json` contains the words used to identify relevant SVT articles. The filter accepts an article when either:
+`feeds.py` contains the shared RSS fetching, deduplication, article history, and feed-checking flow. Each feed has its own key and URL list. To add a feed, add an entry to `FEEDS` with its key, URL list, optional filter, and message formatter. A `None` filter means all new entries are accepted.
+
+`svt_monitor.py` contains SVT-specific settings and behavior: its RSS URLs, keyword filter, and message formatter. SVT's filter accepts an article when either:
+
+`config/keywords.json` contains the words used to identify relevant SVT articles:
 
 1. Its title or summary contains a direct cybersecurity keyword, or
 2. It contains both an attack signal and a system or target keyword.
@@ -107,12 +111,13 @@ With the virtual environment activated, run:
 python bot.py
 ```
 
-The bot must remain running and connected for the scheduled briefing and SVT monitoring to work. Restart it after code changes.
+The bot must remain running and connected for the scheduled briefings and feed checks to work. In `BOT_ENV=test`, automatic scheduled jobs are disabled; use `/check_feeds` to check feeds manually. Restart the bot after code changes.
 
 ## Project files
 
-- `bot.py` — Discord client, slash commands, scheduled briefing, and SVT monitoring.
-- `sources.py` — The Hacker News and SVT RSS feeds, keyword filtering, NVD CVE retrieval, and affected-product extraction.
+- `bot.py` — Discord client, slash commands, scheduled briefings, and scheduled feed-check loop.
+- `feeds.py` — RSS retrieval, per-feed filtering and formatting dispatch, processed article IDs, and feed-check orchestration.
+- `svt_monitor.py` — SVT RSS URLs, SVT keyword filtering, and SVT message formatting.
 - `cve_selection.py` — Watchlist matching and CVE ranking.
 - `ai_ranking.py` — Fetches recent Hacker News articles, asks Claude Haiku 5.5 to rank them, and returns the ranked article data.
 - `systemprompt.txt` — Instructions for ranking articles by relevance to cybersecurity engineering students.
@@ -120,7 +125,7 @@ The bot must remain running and connected for the scheduled briefing and SVT mon
 - `config/cve_watchlist.json` — Broad cybersecurity topics and product families used to filter CVEs.
 - `config/phrases.json` — Morning and evening briefing introduction lists.
 - `briefing.py` — Morning briefing message formatting.
-- `sent_svt_articles.json` — Runtime state containing handled SVT article IDs; generated automatically and excluded from Git.
+- `processed_articles.json` — Runtime state containing handled article IDs grouped by feed; generated automatically and excluded from Git.
 - `requirements.txt` — Python dependencies.
 - `Dockerfile` and `compose.yaml` — Container image and service configuration.
 - `.env` — Local configuration and bot token; do not commit this file.
@@ -128,7 +133,5 @@ The bot must remain running and connected for the scheduled briefing and SVT mon
 
 ## To-Dos
 
-- Remember what articles have been posted from The Hacker News, as well as cves so night and morning briefings don't have the same stuff
 - Add known-exploited vulnerability data to CVE prioritization.
 - Send patchnotes on updates
-- Extra test commands, preferably only available to Testbear
