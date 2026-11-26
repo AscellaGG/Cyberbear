@@ -15,9 +15,11 @@ from briefing import make_briefing, shorten_description
 from cves import get_relevant_cves
 from ai_ranking import get_ai_ranked_articles
 from feeds import check_all_feeds_once
+from database import initialize_database
 
 load_dotenv()
 configure_logging()
+initialize_database()
 
 logger = logging.getLogger(__name__)
 

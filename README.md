@@ -69,6 +69,8 @@ This second rule helps catch incidents involving systems such as store refrigera
 
 Install Docker Engine and the Docker Compose plugin on the machine that will host the bot. Copy `.env.example` to `.env` and fill in the production bot token, channel IDs, and Anthropic API key. Keep `.env` private; it is ignored by Git and excluded from the Docker build context.
 
+Compose stores the production SQLite database at `/var/lib/cyberbear/cyberbear.sqlite3` on the host. Create `/var/lib/cyberbear` before starting the service; the bot creates the database file and tables on its first startup. This directory is mounted into the container, so the database survives image rebuilds and deployments. Direct local runs with `python bot.py` use `data/cyberbear-dev.sqlite3` by default.
+
 Build the image and start the bot in the background:
 
 ```bash
@@ -101,6 +103,8 @@ sudo systemctl enable --now cyberbear-deploy.timer
 sudo systemctl start cyberbear-deploy.service
 ```
 
+The `/var/lib/cyberbear` directory is persistent bot data storage for SQLite as well as deployment state. Keep it when updating or redeploying the bot.
+
 The initial service run deploys the current `main` commit too. View its output with `sudo journalctl -u cyberbear-deploy.service -n 100 --no-pager`, and view the timer with `systemctl status cyberbear-deploy.timer`. The timer runs as root, so the deployment checkout and `.env` should be dedicated to this bot; do not keep hand-edited files in that checkout. Put the production `.env` at `/opt/cyberbear/.env` and restrict it with `sudo chmod 600 /opt/cyberbear/.env`.
 
 ## Run directly with Python
@@ -126,6 +130,7 @@ The bot must remain running and connected for the scheduled briefings and feed c
 - `config/phrases.json` — Morning and evening briefing introduction lists.
 - `briefing.py` — Morning briefing message formatting.
 - `processed_articles.json` — Runtime state containing handled article IDs grouped by feed; generated automatically and excluded from Git.
+- `database.py` — SQLite database initialization for quiz data.
 - `requirements.txt` — Python dependencies.
 - `Dockerfile` and `compose.yaml` — Container image and service configuration.
 - `.env` — Local configuration and bot token; do not commit this file.

@@ -5,3 +5,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      CYBERBEAR_DB_PATH: /data/cyberbear.sqlite3
+    volumes:
+      - /var/lib/cyberbear:/data
