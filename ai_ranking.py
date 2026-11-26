@@ -23,6 +23,7 @@ _ai_cache_lock = threading.Lock()
 _cached_result = None
 _ai_cache_created_at = 0.0
 
+
 def call_ai(user_content):
     sysfile = ""
 
@@ -35,7 +36,7 @@ def call_ai(user_content):
 
     response = client.messages.create(
         model="claude-haiku-5-5",
-        max_tokens=20000,
+        max_tokens=5000,
         thinking={"type": "disabled"},
         system=sysfile,
         messages=[
@@ -98,7 +99,8 @@ def _fetch_and_rank_articles():
 
         try:
             with open("ai_input.txt", "w", encoding="utf-8") as file:
-                json.dump(filtered_articles, file, indent=2, ensure_ascii=False)
+                json.dump(filtered_articles, file,
+                          indent=2, ensure_ascii=False)
 
             ai_response = call_ai(filtered_articles)
 
@@ -109,7 +111,8 @@ def _fetch_and_rank_articles():
 
             ranked_articles = ai_data.get("ranked_articles")
             if not isinstance(ranked_articles, list):
-                raise ValueError("The AI response is missing the ranked_articles list.")
+                raise ValueError(
+                    "The AI response is missing the ranked_articles list.")
 
             return ranked_articles, True
 
@@ -132,7 +135,8 @@ def filter_articles(articles):
         if not article["published"]:
             continue
 
-        published = datetime.strptime(article["published"], "%a, %d %b %Y %H:%M:%S %z")
+        published = datetime.strptime(
+            article["published"], "%a, %d %b %Y %H:%M:%S %z")
 
         if published > start_date:
             filtered_articles.append(article)

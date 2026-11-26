@@ -39,3 +39,4 @@ processed_articles.json
 ai_response.txt
 ai_input.txt
 data/*.sqlite3
+data/course-plans/*

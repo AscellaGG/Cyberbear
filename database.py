@@ -136,12 +136,13 @@ def get_todays_quiz(quiz_date):
         connection.close()
 
 
-def insert_quiz_row(connection, quiz_date, course_name, course_plan_ref):
+def insert_quiz_row(connection, quiz_date, course_name, course_plan_ref, generation_model, prompt_version):
     cursor = connection.execute("""
-        INSERT INTO quizzes (quiz_date, course_name, course_plan_ref)
-        VALUES (?, ?, ?)
+        INSERT INTO quizzes (quiz_date, course_name, course_plan_ref, generation_model, prompt_version)
+        VALUES (?, ?, ?, ?, ?)
     """,
-                                (quiz_date, course_name, course_plan_ref)
+                                (quiz_date, course_name, course_plan_ref,
+                                 generation_model, prompt_version)
                                 )
     return cursor.lastrowid
 
@@ -187,7 +188,7 @@ def insert_question_with_options(connection, quiz_id, question_number, question_
     return question_id
 
 
-def save_quiz(quiz_date, course_name, course_plan_ref, questions):
+def save_quiz(quiz_date, course_name, course_plan_ref, questions, generation_model, prompt_version):
     if len(questions) != 3:
         raise ValueError("Must have exactly 3 questions")
 
@@ -197,7 +198,7 @@ def save_quiz(quiz_date, course_name, course_plan_ref, questions):
         connection.execute("PRAGMA foreign_keys = ON")
 
         quiz_id = insert_quiz_row(
-            connection, quiz_date, course_name, course_plan_ref)
+            connection, quiz_date, course_name, course_plan_ref, generation_model, prompt_version)
 
         for question_number, question in enumerate(questions, start=1):
             insert_question_with_options(
