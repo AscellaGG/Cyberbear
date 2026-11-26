@@ -12,6 +12,8 @@ Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerabili
 - `/check_cve` privately displays the same watchlist-matched CVEs as the morning briefing.
 - A morning briefing runs daily at 08:00 and an evening briefing at 20:00 in the `Europe/Stockholm` time zone.
 - Both scheduled briefings are sent to the Discord channels configured in `BRIEFING_CHANNEL_IDS`.
+- A daily quiz is generated or reused from the database at 08:00 in `Europe/Stockholm` and posted to the channel configured in `QUIZ_CHANNEL_ID`.
+- Players start the posted quiz with a button; questions and answer controls are private to each player.
 - Briefing introductions are chosen randomly from the `morning` or `evening` phrase list in `config/phrases.json`, depending on which scheduled briefing is running.
 - In production, configured RSS feeds are checked every 10 minutes. `/check_feeds` checks all configured feeds immediately.
 - SVT articles are filtered using the keyword rules in `config/keywords.json`; the CERT feed currently sends every new article without filtering.
@@ -39,10 +41,13 @@ Create a `.env` file in the project root:
 ```dotenv
 DISCORD_TOKEN=your-discord-bot-token
 BRIEFING_CHANNEL_IDS=123456789012345678,234567890123456789
+QUIZ_CHANNEL_ID=345678901234567890
 ANTHROPIC_API_KEY=your-anthropic-api-key
+CYBERBEAR_COURSE_NAME=Programmering och Automation för säkerhet
+CYBERBEAR_COURSE_PLAN_REF=programming-automation.pdf
 ```
 
-Replace the example channel IDs with the IDs of the channels where the briefing and matching SVT articles should be posted. Separate multiple IDs with commas. The bot needs permission to view each channel and send messages there.
+Replace the example IDs with the IDs of the channels where briefings and matching SVT articles, and the quiz, should be posted. `BRIEFING_CHANNEL_IDS` accepts comma-separated IDs; `QUIZ_CHANNEL_ID` is one separate channel ID. The bot needs permission to view each channel and send messages there. Ensure the course plan PDF named by `CYBERBEAR_COURSE_PLAN_REF` is in the configured course-plan directory.
 
 Keep both API keys secret. The `.env` file is excluded from Git. Anthropic API usage is billed separately from Claude chat subscriptions; make sure the Anthropic account has API credits or billing enabled.
 
@@ -67,7 +72,7 @@ This second rule helps catch incidents involving systems such as store refrigera
 
 ## Run with Docker Compose
 
-Install Docker Engine and the Docker Compose plugin on the machine that will host the bot. Copy `.env.example` to `.env` and fill in the production bot token, channel IDs, and Anthropic API key. Keep `.env` private; it is ignored by Git and excluded from the Docker build context.
+Install Docker Engine and the Docker Compose plugin on the machine that will host the bot. Copy `.env.example` to `.env` and fill in the production bot token, briefing channel IDs, quiz channel ID, course settings, and Anthropic API key. Keep `.env` private; it is ignored by Git and excluded from the Docker build context. Compose passes values from `.env` to the container through `env_file`.
 
 Compose stores the production SQLite database at `/var/lib/cyberbear/cyberbear.sqlite3` on the host. Create `/var/lib/cyberbear` before starting the service; the bot creates the database file and tables on its first startup. This directory is mounted into the container, so the database survives image rebuilds and deployments. Direct local runs with `python bot.py` use `data/cyberbear-dev.sqlite3` by default.
 

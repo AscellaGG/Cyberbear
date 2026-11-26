@@ -14,7 +14,7 @@ client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 PROJECT_DIR = Path(__file__).resolve().parent
 
 QUIZ_GENERATION_MODEL = "claude-haiku-5-5"
-QUIZ_PROMPT_VERSION = "v2"
+QUIZ_PROMPT_VERSION = "v3"
 
 
 def generate_quiz_text(course_name, course_plan_ref):
@@ -39,7 +39,14 @@ def generate_quiz_text(course_name, course_plan_ref):
                         "type": "text",
                         "text": (
                             f"Create exactly 3 multiple-choice questions for '{course_name}', "
-                            "based only on the attached course plan. Each question needs 4 options, "
+                            "using the attached course plan as source material about what the course teaches. "
+                            "Test substantive course knowledge and skills: concepts, methods, tools, "
+                            "techniques, and practical applications from the course content and learning outcomes. "
+                            "Do not quiz the reader about the course plan document or administrative course details. "
+                            "Do not ask about grading criteria, assessment methods, schedule, duration, credits, "
+                            "or how the course is organized. Prefer questions that ask the learner to understand "
+                            "or apply a course concept or skill. Do not invent details that are unsupported by the PDF. "
+                            "Each question needs 4 options, "
                             "exactly 1 correct option, and a short explanation. "
                             "Write all question text, answer options, and explanations in Swedish. "
                             "Keep established technical terms in English when that is the clearest usage. "
