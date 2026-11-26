@@ -4,7 +4,8 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent
 
-def initialize_database():
+
+def get_database_path():
     configured_path = Path(
         os.getenv("CYBERBEAR_DB_PATH", "data/cyberbear-dev.sqlite3")
     )
@@ -14,9 +15,14 @@ def initialize_database():
 
     configured_path.parent.mkdir(parents=True, exist_ok=True)
 
-    connection = sqlite3.connect(configured_path)
+    return configured_path
 
-    try: 
+
+def initialize_database():
+
+    connection = sqlite3.connect(get_database_path())
+
+    try:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.executescript("""
             CREATE TABLE IF NOT EXISTS quizzes (
@@ -31,7 +37,7 @@ def initialize_database():
             CREATE TABLE IF NOT EXISTS questions (
                 id INTEGER PRIMARY KEY,
                 quiz_id INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
-                question_number INTEGER NOT NULL CHECK(question_number BETWEEN 1 AND 5),
+                question_number INTEGER NOT NULL CHECK(question_number BETWEEN 1 AND 3),
                 question_text TEXT NOT NULL,
                 explanation TEXT NOT NULL,
                 UNIQUE (quiz_id, question_number)
@@ -58,5 +64,152 @@ def initialize_database():
             );
         """)
         connection.commit()
+    finally:
+        connection.close()
+
+
+def get_options(connection, question_id):
+    rows = connection.execute(
+        """
+        SELECT option_number, option_text, is_correct
+        FROM question_options
+        WHERE question_id = ?
+        ORDER BY option_number
+        """,
+        (question_id,)
+    ).fetchall()
+
+    return [
+        {
+            "option_number": row[0],
+            "option_text": row[1],
+            "is_correct": bool(row[2]),
+        }
+        for row in rows
+    ]
+
+
+def get_questions(connection, quiz_id):
+    rows = connection.execute(
+        """
+        SELECT id, question_number, question_text, explanation
+        FROM questions
+        WHERE quiz_id = ?
+        ORDER BY question_number
+        """,
+        (quiz_id,)
+    ).fetchall()
+
+    return [
+        {
+            "id": row[0],
+            "question_number": row[1],
+            "question_text": row[2],
+            "explanation": row[3],
+            "options": get_options(connection, row[0]),
+        }
+        for row in rows
+    ]
+
+
+def get_todays_quiz(quiz_date):
+    connection = sqlite3.connect(get_database_path())
+
+    try:
+        row = connection.execute(
+            "SELECT id, quiz_date, course_name, course_plan_ref "
+            "FROM quizzes WHERE quiz_date = ?",
+            (quiz_date,)
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return {
+            "id": row[0],
+            "quiz_date": row[1],
+            "course_name": row[2],
+            "course_plan_ref": row[3],
+            "questions": get_questions(connection, row[0]),
+        }
+    finally:
+        connection.close()
+
+
+def insert_quiz_row(connection, quiz_date, course_name, course_plan_ref):
+    cursor = connection.execute("""
+        INSERT INTO quizzes (quiz_date, course_name, course_plan_ref)
+        VALUES (?, ?, ?)
+    """,
+                                (quiz_date, course_name, course_plan_ref)
+                                )
+    return cursor.lastrowid
+
+
+def insert_question_row(connection, quiz_id, question_number, question_text, explanation):
+    cursor = connection.execute("""
+        INSERT INTO questions (quiz_id, question_number, question_text, explanation)
+        VALUES (?, ?, ?, ?)
+    """,
+                                (quiz_id, question_number,
+                                 question_text, explanation)
+                                )
+    return cursor.lastrowid
+
+
+def insert_option_row(connection, question_id, option_number, option_text, is_correct):
+    cursor = connection.execute("""
+        INSERT INTO question_options (question_id, option_number, option_text, is_correct)
+        VALUES (?, ?, ?, ?)
+    """,
+                                (question_id, option_number,
+                                 option_text, is_correct)
+                                )
+    return cursor.lastrowid
+
+
+def insert_question_with_options(connection, quiz_id, question_number, question_text, explanation, options):
+    correct_count = sum(is_correct for _, is_correct in options)
+
+    if correct_count != 1:
+        raise ValueError("A question must have exactly one correct option")
+
+    if len(options) != 4:
+        raise ValueError("A question must have exactly 4 options")
+
+    question_id = insert_question_row(
+        connection, quiz_id, question_number, question_text, explanation)
+
+    for option_number, (option_text, is_correct) in enumerate(options, start=1):
+        insert_option_row(connection, question_id,
+                          option_number, option_text, is_correct)
+
+    return question_id
+
+
+def save_quiz(quiz_date, course_name, course_plan_ref, questions):
+    if len(questions) != 3:
+        raise ValueError("Must have exactly 3 questions")
+
+    connection = sqlite3.connect(get_database_path())
+
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+        quiz_id = insert_quiz_row(
+            connection, quiz_date, course_name, course_plan_ref)
+
+        for question_number, question in enumerate(questions, start=1):
+            insert_question_with_options(
+                connection,
+                quiz_id,
+                question_number,
+                question["question_text"],
+                question["explanation"],
+                question["options"]
+            )
+
+        connection.commit()
+        return quiz_id
     finally:
         connection.close()
