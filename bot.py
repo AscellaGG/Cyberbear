@@ -1,7 +1,6 @@
 import asyncio
 import os
 import discord
-import json
 import logging
 
 from dotenv import load_dotenv
@@ -15,9 +14,12 @@ from briefing import make_briefing, shorten_description
 from cves import get_relevant_cves
 from ai_ranking import get_ai_ranked_articles
 from feeds import check_all_feeds_once
+from database import get_todays_quiz, initialize_database
+from quiz_generation import generate_and_save_quiz
 
 load_dotenv()
 configure_logging()
+initialize_database()
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +46,27 @@ EVENING_TIME = time(
     tzinfo=ZoneInfo("Europe/Stockholm"),
 )
 
+QUIZ_TIME = time(
+    hour=8,
+    minute=0,
+    tzinfo=ZoneInfo("Europe/Stockholm"),
+)
+
+
 async def create_briefing_message(period):
     articles, ai_ranked = await asyncio.to_thread(get_ai_ranked_articles)
     cves = await get_relevant_cves()
 
     return make_briefing(articles, cves[:3], period, ai_ranked)
 
+
 async def send_scheduled_briefing(period):
     now = datetime.now(ZoneInfo("Europe/Stockholm"))
 
     if now.weekday() >= 5:
         logger.info("Hoppar över %s-briefing: helg.", period)
-        return    
-    
+        return
+
     await client.wait_until_ready()
 
     channel_ids = [
@@ -80,6 +90,7 @@ async def send_scheduled_briefing(period):
 
     return len(channel_ids)
 
+
 async def run_scheduled_briefing(period):
     try:
         logger.info("Starting %s scheduled briefing.", period)
@@ -93,13 +104,84 @@ async def run_scheduled_briefing(period):
             sent_channel_count,
         )
 
+
+async def send_scheduled_quiz():
+    await client.wait_until_ready()
+
+    channel_id = os.getenv("QUIZ_CHANNEL_ID", "").strip()
+    if not channel_id:
+        raise RuntimeError("QUIZ_CHANNEL_ID is not configured.")
+
+    course_name = os.getenv("CYBERBEAR_COURSE_NAME", "").strip()
+    course_plan_ref = os.getenv("CYBERBEAR_COURSE_PLAN_REF", "").strip()
+    if not course_name or not course_plan_ref:
+        raise RuntimeError(
+            "CYBERBEAR_COURSE_NAME and CYBERBEAR_COURSE_PLAN_REF must be configured."
+        )
+
+    quiz_date = datetime.now(ZoneInfo("Europe/Stockholm")).date().isoformat()
+    await asyncio.to_thread(
+        generate_and_save_quiz,
+        quiz_date,
+        course_name,
+        course_plan_ref,
+    )
+    quiz = await asyncio.to_thread(get_todays_quiz, quiz_date)
+
+    if quiz is None:
+        raise RuntimeError(
+            f"Quiz generation did not produce a saved quiz for {quiz_date}.")
+
+    questions = [
+        {
+            **question,
+            "options": [
+                (option["option_text"], option["is_correct"])
+                for option in question["options"]
+            ],
+        }
+        for question in quiz["questions"]
+    ]
+    if len(questions) != 3:
+        raise ValueError(
+            f"Quiz for {quiz_date} has {len(questions)} questions; expected exactly 3."
+        )
+
+    channel = client.get_channel(int(channel_id))
+    if channel is None:
+        channel = await client.fetch_channel(int(channel_id))
+
+    await channel.send(
+        f"## Dagens quiz — {quiz_date}\nTryck på knappen för att starta!",
+        view=StartQuizView(questions),
+    )
+    return quiz_date
+
+
+async def run_scheduled_quiz():
+    try:
+        logger.info("Starting scheduled quiz.")
+        quiz_date = await send_scheduled_quiz()
+    except Exception:
+        logger.exception("Scheduled quiz failed.")
+    else:
+        logger.info("Scheduled quiz for %s was posted.", quiz_date)
+
+
 @tasks.loop(time=MORNING_TIME)
 async def scheduled_morning_briefing():
     await run_scheduled_briefing("morning")
 
+
+@tasks.loop(time=QUIZ_TIME)
+async def scheduled_quiz():
+    await run_scheduled_quiz()
+
+
 @tasks.loop(time=EVENING_TIME)
 async def scheduled_evening_briefing():
     await run_scheduled_briefing("evening")
+
 
 async def send_feed_message(message):
     channel_ids = [
@@ -109,7 +191,7 @@ async def send_feed_message(message):
     ]
 
     if not channel_ids:
-        raise RuntimeError("No breifinf channels are configured.")
+        raise RuntimeError("No briefing channels are configured.")
 
     for channel_id in channel_ids:
         channel = client.get_channel(channel_id)
@@ -119,6 +201,7 @@ async def send_feed_message(message):
 
         await channel.send(message, suppress_embeds=True)
 
+
 @tasks.loop(minutes=10)
 async def scheduled_feed_check():
     try:
@@ -127,9 +210,11 @@ async def scheduled_feed_check():
     except Exception:
         logger.exception("Scheduled feed check failed.")
 
+
 @scheduled_feed_check.before_loop
 async def before_check_feeds():
     await client.wait_until_ready()
+
 
 @client.event
 async def on_ready():
@@ -142,18 +227,22 @@ async def on_ready():
 
     logger.info("Logged in as %s.", client.user)
 
-    if IS_TEST:
-        logger.info("Test environment: automatic scheduled jobs are disabled.")
-        return
+    # if IS_TEST:
+    #     logger.info("Test environment: automatic scheduled jobs are disabled.")
+    #     return
 
     if not scheduled_morning_briefing.is_running():
         scheduled_morning_briefing.start()
+
+    if not scheduled_quiz.is_running():
+        scheduled_quiz.start()
 
     if not scheduled_evening_briefing.is_running():
         scheduled_evening_briefing.start()
 
     if not scheduled_feed_check.is_running():
         scheduled_feed_check.start()
+
 
 @tree.command(name="brief", description="Få en briefing på nyheter inom cybersäkerhet från Cyberbear.")
 async def brief(interaction: discord.Interaction):
@@ -162,6 +251,7 @@ async def brief(interaction: discord.Interaction):
     message = await create_briefing_message("other")
 
     await interaction.followup.send(message, suppress_embeds=True)
+
 
 @tree.command(name="check_feeds", description="Kontrollera nyhets-flöden nu.")
 async def check_feeds_command(interaction: discord.Interaction):
@@ -180,6 +270,7 @@ async def check_feeds_command(interaction: discord.Interaction):
             ephemeral=True,
         )
 
+
 @tree.command(name="check_cve", description="Kolla nya CVEr.")
 async def check_cve(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True, ephemeral=True)
@@ -192,12 +283,14 @@ async def check_cve(interaction: discord.Interaction):
 
     for cve in cves[:3]:
         lines.append(f"### {cve['id']}")
-        lines.append(f"**Allvarlighetsgrad:** {cve['severity']}, {cve['score']}")
+        lines.append(
+            f"**Allvarlighetsgrad:** {cve['severity']}, {cve['score']}")
 
         description = shorten_description(cve['description'])
         lines.append(description)
 
-        lines.append(f"[Läs mer](https://nvd.nist.gov/vuln/detail/{cve['id']})")
+        lines.append(
+            f"[Läs mer](https://nvd.nist.gov/vuln/detail/{cve['id']})")
         lines.append("")
 
     await interaction.followup.send(
@@ -206,9 +299,157 @@ async def check_cve(interaction: discord.Interaction):
         ephemeral=True,
     )
 
+
+class QuizAnswerButton(discord.ui.Button):
+    def __init__(self, quiz_view, option_index):
+        self.quiz_view = quiz_view
+        self.option_index = option_index
+        label = chr(ord("A") + option_index)
+        super().__init__(
+            label=label,
+            style=discord.ButtonStyle.secondary,
+            row=option_index // 5,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.quiz_view.submit_answer(interaction, self.option_index)
+
+
+class QuizSessionView(discord.ui.View):
+    def __init__(self, questions, user_id):
+        super().__init__(timeout=900)
+        self.questions = questions
+        self.user_id = user_id
+        self.question_index = 0
+        self.answers = []
+        self.add_answer_buttons()
+
+    def add_answer_buttons(self):
+        question = self.questions[self.question_index]
+        for option_index in range(len(question["options"])):
+            self.add_item(QuizAnswerButton(self, option_index))
+
+    def render_question(self):
+        question = self.questions[self.question_index]
+        choices = [
+            f"**{chr(ord('A') + index)}.** {option_text}"
+            for index, (option_text, _) in enumerate(question["options"])
+        ]
+        return (
+            f"**Fråga {self.question_index + 1}/{len(self.questions)}**\n"
+            f"{question['question_text']}\n\n"
+            f"{chr(10).join(choices)}"
+        )
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "Det här quizet tillhör någon annan.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    async def submit_answer(
+        self,
+        interaction: discord.Interaction,
+        selected_index: int,
+    ):
+        question = self.questions[self.question_index]
+        self.answers.append(selected_index)
+        _, is_correct = question["options"][selected_index]
+        correct_index = next(
+            index
+            for index, (_, option_is_correct) in enumerate(question["options"])
+            if option_is_correct
+        )
+        correct_text = question["options"][correct_index][0]
+
+        if is_correct:
+            feedback = "✅ Rätt svar!"
+        else:
+            feedback = f"❌ Inte riktigt. Rätt svar: **{chr(ord('A') + correct_index)}. {correct_text}**"
+
+        feedback += f"\n*Förklaring:* {question['explanation']}"
+        self.question_index += 1
+
+        if self.question_index == len(self.questions):
+            summary = ["## Quizet är klart! Här är sammanfattningen:"]
+            for index, (answered_question, answer_index) in enumerate(
+                zip(self.questions, self.answers),
+                start=1,
+            ):
+                correct_index = next(
+                    option_index
+                    for option_index, (_, option_is_correct) in enumerate(
+                        answered_question["options"]
+                    )
+                    if option_is_correct
+                )
+                correct_text = answered_question["options"][correct_index][0]
+                player_text = answered_question["options"][answer_index][0]
+                result = "✅" if answer_index == correct_index else "❌"
+                summary.extend(
+                    [
+                        f"## Fråga {index}\n**{answered_question['question_text']}**\n",
+                        f"Ditt svar: {chr(ord('A') + answer_index)}. {player_text}",
+                        f"Rätt svar: {chr(ord('A') + correct_index)}. {correct_text} {result}\n",
+                        f"*Förklaring:* {answered_question['explanation']}",
+                        "",
+                    ]
+                )
+
+            summary_text = "\n".join(summary)
+            summary_chunks = []
+            while len(summary_text) > 1900:
+                split_at = summary_text.rfind("\n", 0, 1900)
+                if split_at == -1:
+                    split_at = 1900
+                summary_chunks.append(summary_text[:split_at])
+                summary_text = summary_text[split_at:].lstrip()
+            summary_chunks.append(summary_text)
+
+            await interaction.response.edit_message(
+                content=summary_chunks[0],
+                view=None,
+            )
+            for chunk in summary_chunks[1:]:
+                await interaction.followup.send(chunk, ephemeral=True)
+            return
+
+        self.clear_items()
+        self.add_answer_buttons()
+        await interaction.response.edit_message(
+            content=f"{feedback}\n\n{self.render_question()}",
+            view=self,
+        )
+
+
+class StartQuizView(discord.ui.View):
+    def __init__(self, questions):
+        super().__init__(timeout=3600)
+        self.questions = questions
+
+    @discord.ui.button(
+        label="Start Quiz",
+        style=discord.ButtonStyle.primary,
+        custom_id="cyberbear:test-quiz-start",
+    )
+    async def start_quiz(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        session = QuizSessionView(self.questions, interaction.user.id)
+        await interaction.response.send_message(
+            session.render_question(),
+            view=session,
+            ephemeral=True,
+        )
+
+
 # --------------------
 # FOR TESTING PURPOSES
-
 if IS_TEST:
     @tree.command(name="preview_svt", description="Visa SVT-artiklar som filtret väljer.")
     async def preview_svt(interaction: discord.Interaction):
@@ -237,7 +478,63 @@ if IS_TEST:
     async def test(interaction: discord.Interaction):
         await interaction.response.send_message("Hello!")
 
-# --------------------
+    @tree.command(
+        name="test_quiz",
+        description="Visa det förgenererade quizet för idag."
+    )
+    async def test_quiz(interaction: discord.Interaction):
+        owner_user_id = os.getenv("OWNER_USER_ID")
+        if not owner_user_id or str(interaction.user.id) != owner_user_id:
+            await interaction.response.send_message(
+                "Du har inte behörighet att köra detta test.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(thinking=True)
+
+        try:
+            quiz_date = datetime.now(
+                ZoneInfo("Europe/Stockholm")
+            ).date().isoformat()
+            quiz = await asyncio.to_thread(get_todays_quiz, quiz_date)
+
+            if quiz is None:
+                await interaction.followup.send(
+                    f"Det finns inget sparat quiz för {quiz_date} ännu.",
+                    ephemeral=True,
+                )
+                return
+
+            questions = [
+                {
+                    **question,
+                    "options": [
+                        (option["option_text"], option["is_correct"])
+                        for option in question["options"]
+                    ],
+                }
+                for question in quiz["questions"]
+            ]
+
+            if len(questions) != 3:
+                await interaction.followup.send(
+                    f"Quizet för {quiz_date} har {len(questions)} frågor; förväntade 3.",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.followup.send(
+                f"Dagens sparade testquiz ({quiz_date}) är redo. Klicka för att starta:",
+                view=StartQuizView(questions),
+            )
+
+        except Exception:
+            logger.exception("Discord test quiz command failed.")
+            await interaction.followup.send(
+                "Quiztestet misslyckades. Se botloggen för detaljer.",
+                ephemeral=True,
+            )
 
 
 @tree.error
