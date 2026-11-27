@@ -174,7 +174,7 @@ async def send_scheduled_quiz():
 
     view = StartQuizView(questions)
     active_quiz_message = await channel.send(
-        f"##<:Cyberbear:1567119096871391314> Dagens quiz — {quiz_date}\nTryck på knappen för att starta!",
+        f"## <:Cyberbear:1567119096871391314> Dagens quiz — {quiz_date}\nTryck på knappen för att starta!",
         view=view,
     )
     active_quiz_view = view
