@@ -4,7 +4,7 @@ import discord
 import logging
 
 from dotenv import load_dotenv
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from discord.ext import tasks
 from pathlib import Path
@@ -14,7 +14,13 @@ from briefing import make_briefing, shorten_description
 from cves import get_relevant_cves
 from ai_ranking import get_ai_ranked_articles
 from feeds import check_all_feeds_once
-from database import get_todays_quiz, initialize_database
+from database import (
+    award_perfect_quiz_bonus,
+    get_leaderboard,
+    get_todays_quiz,
+    initialize_database,
+    record_answer,
+)
 from quiz_generation import generate_and_save_quiz
 
 load_dotenv()
@@ -51,6 +57,19 @@ QUIZ_TIME = time(
     minute=0,
     tzinfo=ZoneInfo("Europe/Stockholm"),
 )
+
+QUIZ_CLOSE_TIME = time(
+    hour=20,
+    minute=0,
+    tzinfo=ZoneInfo("Europe/Stockholm"),
+)
+
+XP_PER_CORRECT_ANSWER = 10
+PERFECT_QUIZ_BONUS = 5
+
+active_quiz_message = None
+active_quiz_view = None
+weekly_leaderboard_message = None
 
 
 async def create_briefing_message(period):
@@ -106,6 +125,8 @@ async def run_scheduled_briefing(period):
 
 
 async def send_scheduled_quiz():
+    global active_quiz_message, active_quiz_view
+
     await client.wait_until_ready()
 
     channel_id = os.getenv("QUIZ_CHANNEL_ID", "").strip()
@@ -151,11 +172,110 @@ async def send_scheduled_quiz():
     if channel is None:
         channel = await client.fetch_channel(int(channel_id))
 
-    await channel.send(
-        f"## Dagens quiz — {quiz_date}\nTryck på knappen för att starta!",
-        view=StartQuizView(questions),
+    view = StartQuizView(questions)
+    active_quiz_message = await channel.send(
+        f"##<:Cyberbear:1567119096871391314> Dagens quiz — {quiz_date}\nTryck på knappen för att starta!",
+        view=view,
     )
+    active_quiz_view = view
+    await update_weekly_leaderboard(channel)
     return quiz_date
+
+
+async def find_scheduled_quiz_message(channel, quiz_date):
+    if active_quiz_message is not None:
+        return active_quiz_message
+
+    async for message in channel.history(limit=50):
+        if (
+            message.author == client.user
+            and f"Dagens quiz — {quiz_date}" in message.content
+        ):
+            return message
+
+    return None
+
+
+def get_weekly_winner_role(guild):
+    role_id = os.getenv("WEEKLY_WINNER_ROLE_ID", "").strip()
+    if not role_id:
+        logger.warning("WEEKLY_WINNER_ROLE_ID is not configured.")
+        return None
+
+    try:
+        role = guild.get_role(int(role_id))
+    except ValueError:
+        logger.error("WEEKLY_WINNER_ROLE_ID is not a valid Discord role ID.")
+        return None
+
+    if role is None:
+        logger.error(
+            "Weekly winner role %s was not found in the quiz guild.", role_id)
+    return role
+
+
+async def assign_weekly_winner_role(guild):
+    role = get_weekly_winner_role(guild)
+    if role is None:
+        return
+
+    rows = await asyncio.to_thread(get_leaderboard, get_week_start_utc(), None)
+    if not rows:
+        logger.info("No weekly leaderboard winners to assign.")
+        return
+
+    top_xp = rows[0]["total_xp"]
+    winner_ids = {
+        int(row["discord_user_id"])
+        for row in rows
+        if row["total_xp"] == top_xp
+    }
+
+    for member in role.members:
+        if member.id not in winner_ids:
+            await member.remove_roles(role, reason="Weekly leaderboard winner update")
+
+    assigned_count = 0
+    for winner_id in winner_ids:
+        try:
+            member = guild.get_member(winner_id) or await guild.fetch_member(winner_id)
+        except discord.NotFound:
+            logger.warning(
+                "Weekly winner %s is not in the quiz guild.", winner_id)
+            continue
+
+        await member.add_roles(role, reason="Finished first on the weekly leaderboard")
+        assigned_count += 1
+
+    logger.info(
+        "Assigned weekly winner role to %d tied winner(s).", assigned_count)
+
+
+async def close_scheduled_quiz():
+    global active_quiz_message, active_quiz_view
+
+    channel_id = os.getenv("QUIZ_CHANNEL_ID", "").strip()
+    if not channel_id:
+        raise RuntimeError("QUIZ_CHANNEL_ID is not configured.")
+
+    channel = client.get_channel(int(channel_id))
+    if channel is None:
+        channel = await client.fetch_channel(int(channel_id))
+
+    quiz_date = datetime.now(ZoneInfo("Europe/Stockholm")).date().isoformat()
+    quiz_message = await find_scheduled_quiz_message(channel, quiz_date)
+    if quiz_message is not None:
+        await quiz_message.delete()
+    else:
+        logger.info("No quiz message found to delete for %s.", quiz_date)
+
+    await update_weekly_leaderboard(channel)
+
+    if datetime.now(ZoneInfo("Europe/Stockholm")).weekday() == 4:
+        await assign_weekly_winner_role(channel.guild)
+
+    active_quiz_message = None
+    active_quiz_view = None
 
 
 async def run_scheduled_quiz():
@@ -175,7 +295,22 @@ async def scheduled_morning_briefing():
 
 @tasks.loop(time=QUIZ_TIME)
 async def scheduled_quiz():
+    if datetime.now(ZoneInfo("Europe/Stockholm")).weekday() >= 5:
+        logger.info("Hoppar över quiz: helg.")
+        return
     await run_scheduled_quiz()
+
+
+@tasks.loop(time=QUIZ_CLOSE_TIME)
+async def scheduled_quiz_close():
+    if datetime.now(ZoneInfo("Europe/Stockholm")).weekday() >= 5:
+        logger.info("Hoppar över quiz-stängning: helg.")
+        return
+
+    try:
+        await close_scheduled_quiz()
+    except Exception:
+        logger.exception("Scheduled quiz close failed.")
 
 
 @tasks.loop(time=EVENING_TIME)
@@ -220,10 +355,19 @@ async def before_check_feeds():
 async def on_ready():
     try:
         synced = await tree.sync()
+        guild_synced = 0
+        for guild in client.guilds:
+            tree.copy_global_to(guild=guild)
+            await tree.sync(guild=guild)
+            guild_synced += 1
     except Exception:
         logger.exception("Failed to sync application commands.")
     else:
-        logger.info("Synced %d global application command(s).", len(synced))
+        logger.info(
+            "Synced %d global application command(s) and updated %d guild(s).",
+            len(synced),
+            guild_synced,
+        )
 
     logger.info("Logged in as %s.", client.user)
 
@@ -236,6 +380,9 @@ async def on_ready():
 
     if not scheduled_quiz.is_running():
         scheduled_quiz.start()
+
+    if not scheduled_quiz_close.is_running():
+        scheduled_quiz_close.start()
 
     if not scheduled_evening_briefing.is_running():
         scheduled_evening_briefing.start()
@@ -300,6 +447,103 @@ async def check_cve(interaction: discord.Interaction):
     )
 
 
+def get_week_start_utc():
+    now = datetime.now(ZoneInfo("Europe/Stockholm"))
+    week_start = now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) - timedelta(days=now.weekday())
+    return week_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_leaderboard(rows, title, guild=None):
+    if not rows:
+        return f"{title}\nDet finns ingen XP-statistik ännu."
+
+    lines = [title, ""]
+    previous_xp = None
+    rank = 0
+    for position, row in enumerate(rows, start=1):
+        if row["total_xp"] != previous_xp:
+            rank = position
+            previous_xp = row["total_xp"]
+
+        user = guild.get_member(
+            int(row["discord_user_id"])) if guild else None
+        if user is None:
+            user = client.get_user(int(row["discord_user_id"]))
+        display_name = user.mention if user is not None else f"<@{row['discord_user_id']}>"
+        crown = "👑 " if rank == 1 else ""
+        lines.append(
+            f"**{rank}.** {crown}{display_name} — **{row['total_xp']} XP** "
+            f"({row['correct_answers']}/{row['answers_count']} rätt)"
+        )
+
+    return "\n".join(lines)
+
+
+async def build_leaderboard_message(title, start_time=None, guild=None):
+    rows = await asyncio.to_thread(get_leaderboard, start_time)
+    return format_leaderboard(rows, title, guild)
+
+
+async def update_weekly_leaderboard(channel):
+    global weekly_leaderboard_message
+
+    message_content = await build_leaderboard_message(
+        "## 🏆 Weekly leaderboard",
+        get_week_start_utc(),
+        channel.guild,
+    )
+
+    if (
+        weekly_leaderboard_message is not None
+        and weekly_leaderboard_message.channel.id == channel.id
+    ):
+        try:
+            await weekly_leaderboard_message.edit(content=message_content)
+            return weekly_leaderboard_message
+        except discord.NotFound:
+            weekly_leaderboard_message = None
+
+    async for message in channel.history(limit=50):
+        if (
+            message.author == client.user
+            and message.content.startswith("## 🏆 Weekly leaderboard")
+        ):
+            weekly_leaderboard_message = message
+            await message.edit(content=message_content)
+            return message
+
+    weekly_leaderboard_message = await channel.send(message_content)
+    return weekly_leaderboard_message
+
+
+async def send_leaderboard(interaction, title, start_time=None):
+    message = await build_leaderboard_message(
+        title,
+        start_time,
+        interaction.guild,
+    )
+    await interaction.response.send_message(message, ephemeral=True)
+
+
+@tree.command(name="leaderboard", description="Visa all-time XP leaderboard.")
+async def leaderboard_command(interaction: discord.Interaction):
+    await send_leaderboard(interaction, "## 🏆 All-time leaderboard")
+
+
+@tree.command(name="weekly_leaderboard", description="Visa veckans XP leaderboard.")
+async def weekly_leaderboard_command(interaction: discord.Interaction):
+    await send_leaderboard(
+        interaction,
+        "## 🏆 Weekly leaderboard",
+        get_week_start_utc(),
+    )
+
+
 @tree.command(
     name="send_quiz",
     description="Skicka dagens quiz manuellt till quizkanalen.",
@@ -352,6 +596,7 @@ class QuizSessionView(discord.ui.View):
         self.user_id = user_id
         self.question_index = 0
         self.answers = []
+        self.xp_earned = 0
         self.add_answer_buttons()
 
     def add_answer_buttons(self):
@@ -388,6 +633,17 @@ class QuizSessionView(discord.ui.View):
         question = self.questions[self.question_index]
         self.answers.append(selected_index)
         _, is_correct = question["options"][selected_index]
+        answer_xp = XP_PER_CORRECT_ANSWER if is_correct else 0
+        answer_saved = await asyncio.to_thread(
+            record_answer,
+            question["id"],
+            self.user_id,
+            selected_index + 1,
+            is_correct,
+            answer_xp,
+        )
+        if answer_saved:
+            self.xp_earned += answer_xp
         correct_index = next(
             index
             for index, (_, option_is_correct) in enumerate(question["options"])
@@ -404,7 +660,28 @@ class QuizSessionView(discord.ui.View):
         self.question_index += 1
 
         if self.question_index == len(self.questions):
+            bonus_awarded = await asyncio.to_thread(
+                award_perfect_quiz_bonus,
+                [answered_question["id"]
+                    for answered_question in self.questions],
+                self.user_id,
+                XP_PER_CORRECT_ANSWER,
+                PERFECT_QUIZ_BONUS,
+            )
+            if bonus_awarded:
+                self.xp_earned += PERFECT_QUIZ_BONUS
+
+            try:
+                await update_weekly_leaderboard(interaction.channel)
+            except Exception:
+                logger.exception("Failed to update weekly leaderboard.")
+
             summary = ["## Quizet är klart! Här är sammanfattningen:"]
+            summary.append(f"**XP vunnet:** {self.xp_earned}")
+            if bonus_awarded:
+                summary.append(
+                    f"🎉 Perfekt quiz! +{PERFECT_QUIZ_BONUS} bonus-XP")
+            summary.append("")
             for index, (answered_question, answer_index) in enumerate(
                 zip(self.questions, self.answers),
                 start=1,
@@ -447,6 +724,11 @@ class QuizSessionView(discord.ui.View):
                 await interaction.followup.send(chunk, ephemeral=True)
             return
 
+        try:
+            await update_weekly_leaderboard(interaction.channel)
+        except Exception:
+            logger.exception("Failed to update weekly leaderboard.")
+
         self.clear_items()
         self.add_answer_buttons()
         await interaction.response.edit_message(
@@ -457,7 +739,7 @@ class QuizSessionView(discord.ui.View):
 
 class StartQuizView(discord.ui.View):
     def __init__(self, questions):
-        super().__init__(timeout=3600)
+        super().__init__(timeout=43200)
         self.questions = questions
 
     @discord.ui.button(
