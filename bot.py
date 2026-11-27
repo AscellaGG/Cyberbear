@@ -300,6 +300,36 @@ async def check_cve(interaction: discord.Interaction):
     )
 
 
+@tree.command(
+    name="send_quiz",
+    description="Skicka dagens quiz manuellt till quizkanalen.",
+)
+async def send_quiz_command(interaction: discord.Interaction):
+    owner_user_id = os.getenv("OWNER_USER_ID", "").strip()
+    if not owner_user_id or str(interaction.user.id) != owner_user_id:
+        await interaction.response.send_message(
+            "Du har inte behörighet att skicka quizet.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(thinking=True, ephemeral=True)
+
+    try:
+        quiz_date = await send_scheduled_quiz()
+    except Exception:
+        logger.exception("Manual quiz send failed.")
+        await interaction.followup.send(
+            "Quizet kunde inte skickas. Kontrollera botloggarna för detaljer.",
+            ephemeral=True,
+        )
+    else:
+        await interaction.followup.send(
+            f"Dagens quiz ({quiz_date}) skickades till quizkanalen.",
+            ephemeral=True,
+        )
+
+
 class QuizAnswerButton(discord.ui.Button):
     def __init__(self, quiz_view, option_index):
         self.quiz_view = quiz_view
