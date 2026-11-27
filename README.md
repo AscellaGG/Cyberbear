@@ -6,14 +6,15 @@ Cyberbear is a Python Discord bot that shares cybersecurity news and vulnerabili
 
 - `/brief` creates and sends a briefing on demand using an evening introduction.
 - The briefing sends recent The Hacker News articles from the previous 24 hours to Anthropic Claude Haiku 5.5 for relevance ranking, then includes up to the top three.
-- Article relevance is judged for cybersecurity engineering students using the instructions in `systemprompt.txt`; the AI preserves article details and adds a rank, relevance score, and reason.
+- Article relevance is judged for cybersecurity engineering students using the instructions in `prompts/systemprompt.txt`; the AI preserves article details and adds a rank, relevance score, and reason.
 - It checks up to 250 CVEs published during the previous 24 hours, skips CVEs without a CVSS score, matches affected products against `config/cve_watchlist.json`, and displays up to three matching CVEs ranked by numeric CVSS score.
 - CVE entries include affected-product hints extracted from NVD's `affected` and CPE configuration data.
 - `/check_cve` privately displays the same watchlist-matched CVEs as the morning briefing.
 - A morning briefing runs daily at 08:00 and an evening briefing at 20:00 in the `Europe/Stockholm` time zone.
 - Both scheduled briefings are sent to the Discord channels configured in `BRIEFING_CHANNEL_IDS`.
-- A daily quiz is generated or reused from the database at 08:00 in `Europe/Stockholm` and posted to the channel configured in `QUIZ_CHANNEL_ID`.
+- A quiz is generated or reused from the database at 08:00 on weekdays in `Europe/Stockholm` and posted to the channel configured in `QUIZ_CHANNEL_ID`; the quiz message is deleted at 20:00.
 - Players start the posted quiz with a button; questions and answer controls are private to each player.
+- The quiz channel keeps one continuously updated weekly leaderboard. At Friday 20:00, every user tied for first place receives the configured weekly winner role until the following Friday.
 - Briefing introductions are chosen randomly from the `morning` or `evening` phrase list in `config/phrases.json`, depending on which scheduled briefing is running.
 - In production, configured RSS feeds are checked every 10 minutes. `/check_feeds` checks all configured feeds immediately.
 - SVT articles are filtered using the keyword rules in `config/keywords.json`; the CERT feed currently sends every new article without filtering.
@@ -42,12 +43,13 @@ Create a `.env` file in the project root:
 DISCORD_TOKEN=your-discord-bot-token
 BRIEFING_CHANNEL_IDS=123456789012345678,234567890123456789
 QUIZ_CHANNEL_ID=345678901234567890
+WEEKLY_WINNER_ROLE_ID=456789012345678901
 ANTHROPIC_API_KEY=your-anthropic-api-key
 CYBERBEAR_COURSE_NAME=Programmering och Automation för säkerhet
 CYBERBEAR_COURSE_PLAN_REF=programming-automation.pdf
 ```
 
-Replace the example IDs with the IDs of the channels where briefings and matching SVT articles, and the quiz, should be posted. `BRIEFING_CHANNEL_IDS` accepts comma-separated IDs; `QUIZ_CHANNEL_ID` is one separate channel ID. The bot needs permission to view each channel and send messages there. Ensure the course plan PDF named by `CYBERBEAR_COURSE_PLAN_REF` is in the configured course-plan directory.
+Replace the example IDs with the IDs of the channels where briefings and matching SVT articles, the quiz, and the weekly winner role should be used. `BRIEFING_CHANNEL_IDS` accepts comma-separated IDs; `QUIZ_CHANNEL_ID` is one separate quiz channel ID. The bot needs permission to view each channel and send messages there, plus Manage Roles with its bot role positioned above `WEEKLY_WINNER_ROLE_ID`. Ensure the course plan PDF named by `CYBERBEAR_COURSE_PLAN_REF` is in the configured course-plan directory.
 
 Keep both API keys secret. The `.env` file is excluded from Git. Anthropic API usage is billed separately from Claude chat subscriptions; make sure the Anthropic account has API credits or billing enabled.
 
@@ -129,7 +131,7 @@ The bot must remain running and connected for the scheduled briefings and feed c
 - `svt_monitor.py` — SVT RSS URLs, SVT keyword filtering, and SVT message formatting.
 - `cve_selection.py` — Watchlist matching and CVE ranking.
 - `ai_ranking.py` — Fetches recent Hacker News articles, asks Claude Haiku 5.5 to rank them, and returns the ranked article data.
-- `systemprompt.txt` — Instructions for ranking articles by relevance to cybersecurity engineering students.
+- `prompts/systemprompt.txt` — Instructions for ranking articles by relevance to cybersecurity engineering students.
 - `config/keywords.json` — Swedish and English keywords used by the SVT article filter.
 - `config/cve_watchlist.json` — Broad cybersecurity topics and product families used to filter CVEs.
 - `config/phrases.json` — Morning and evening briefing introduction lists.

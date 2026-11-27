@@ -136,6 +136,119 @@ def get_todays_quiz(quiz_date):
         connection.close()
 
 
+def record_answer(question_id, discord_user_id, selected_option_number, is_correct, xp_awarded):
+    connection = sqlite3.connect(get_database_path())
+
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        cursor = connection.execute(
+            """
+            INSERT OR IGNORE INTO answers (
+                question_id,
+                discord_user_id,
+                selected_option_number,
+                is_correct,
+                xp_awarded
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                question_id,
+                str(discord_user_id),
+                selected_option_number,
+                int(is_correct),
+                xp_awarded,
+            ),
+        )
+        connection.commit()
+        return cursor.rowcount == 1
+    finally:
+        connection.close()
+
+
+def award_perfect_quiz_bonus(
+    question_ids, discord_user_id, base_xp, bonus_xp
+):
+    if len(question_ids) != 3:
+        return False
+
+    connection = sqlite3.connect(get_database_path())
+
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        placeholders = ", ".join("?" for _ in question_ids)
+        rows = connection.execute(
+            f"""
+            SELECT a.id, a.is_correct, a.xp_awarded
+            FROM answers AS a
+            JOIN questions AS q ON q.id = a.question_id
+            WHERE a.discord_user_id = ?
+              AND a.question_id IN ({placeholders})
+            ORDER BY q.question_number
+            """,
+            (str(discord_user_id), *question_ids),
+        ).fetchall()
+
+        if len(rows) != len(question_ids) or not all(row[1] for row in rows):
+            return False
+
+        # The bonus is added only while all answers still have their base XP.
+        if any(row[2] != base_xp for row in rows):
+            return False
+
+        last_answer_id = rows[-1][0]
+        connection.execute(
+            "UPDATE answers SET xp_awarded = xp_awarded + ? WHERE id = ?",
+            (bonus_xp, last_answer_id),
+        )
+        connection.commit()
+        return True
+    finally:
+        connection.close()
+
+
+def get_leaderboard(start_time=None, limit=10):
+    connection = sqlite3.connect(get_database_path())
+
+    try:
+        query = """
+            SELECT
+                discord_user_id,
+                SUM(xp_awarded) AS total_xp,
+                COUNT(*) AS answers_count,
+                SUM(is_correct) AS correct_answers
+            FROM answers
+        """
+        parameters = []
+
+        if start_time is not None:
+            query += " WHERE answered_at >= ?"
+            parameters.append(start_time)
+
+        query += """
+            GROUP BY discord_user_id
+            ORDER BY total_xp DESC, correct_answers DESC, discord_user_id ASC
+        """
+
+        if limit is not None:
+            limit = max(1, min(int(limit), 25))
+            query += " LIMIT ?"
+            parameters.append(limit)
+
+        rows = connection.execute(query, parameters).fetchall()
+        return [
+            {
+                "discord_user_id": row[0],
+                "total_xp": row[1],
+                "answers_count": row[2],
+                "correct_answers": row[3],
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
 def insert_quiz_row(connection, quiz_date, course_name, course_plan_ref, generation_model, prompt_version):
     cursor = connection.execute("""
         INSERT INTO quizzes (quiz_date, course_name, course_plan_ref, generation_model, prompt_version)

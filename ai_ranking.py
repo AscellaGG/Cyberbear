@@ -16,7 +16,7 @@ load_dotenv()  # Loads ANTHROPIC_API_KEY from your .env file
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 RSS_URL = "https://thehackernews.com/feeds/posts/default?alt=rss"
-SYSTEM_PROMPT_FILE = Path(__file__).resolve().with_name("systemprompt.txt")
+SYSTEM_PROMPT_FILE = Path(__file__).resolve().parent / "prompts" / "systemprompt.txt"
 
 AI_CACHE_SECONDS = 60 * 60
 _ai_cache_lock = threading.Lock()

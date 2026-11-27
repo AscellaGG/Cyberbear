@@ -1,6 +1,7 @@
 import base64
 import os
 import json
+from random import SystemRandom
 
 from pathlib import Path
 from anthropic import Anthropic
@@ -14,8 +15,10 @@ client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 PROJECT_DIR = Path(__file__).resolve().parent
 
 QUIZ_GENERATION_MODEL = "claude-haiku-5-5"
-QUIZ_PROMPT_VERSION = "v6"
-QUIZ_PROMPT_FILE = PROJECT_DIR / f"quiz_prompt_{QUIZ_PROMPT_VERSION}.txt"
+QUIZ_PROMPT_VERSION = "v8"
+PROMPTS_DIR = PROJECT_DIR / "prompts"
+QUIZ_PROMPT_FILE = PROMPTS_DIR / f"quiz_prompt_{QUIZ_PROMPT_VERSION}.txt"
+RANDOM = SystemRandom()
 
 
 def generate_quiz_text(course_name, course_plan_ref):
@@ -64,6 +67,9 @@ def generate_quiz_questions(course_name, course_plan_ref):
 
     if len(questions) != 3:
         raise ValueError("Claude's response must contain exactly 3 questions")
+
+    for question in questions:
+        RANDOM.shuffle(question["options"])
 
     return questions
 
